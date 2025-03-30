@@ -11,6 +11,7 @@ import BillingPage from "@/pages/billing-page";
 import SuppliersPage from "@/pages/suppliers-page";
 import ReportsPage from "@/pages/reports-page";
 import TransactionsPage from "@/pages/transactions-page";
+import OrdersPage from "@/pages/orders-page";
 
 // Add Pages
 import AddMedicinePage from "@/pages/add-medicine-page";
@@ -19,6 +20,8 @@ import AddDoctorPage from "@/pages/add-doctor-page";
 import AddPrescriptionPage from "@/pages/add-prescription-page";
 import AddSupplierPage from "@/pages/add-supplier-page";
 import AddTransactionPage from "@/pages/add-transaction-page-final";
+import AddOrderPage from "@/pages/add-order-page";
+import OrderDetailsPage from "@/pages/order-details-page";
 
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";
@@ -38,6 +41,7 @@ function Router() {
       <ProtectedRoute path="/transactions" component={TransactionsPage} />
       <ProtectedRoute path="/suppliers" component={SuppliersPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
+      <ProtectedRoute path="/orders" component={OrdersPage} />
       
       {/* Add new item pages */}
       <ProtectedRoute path="/inventory/new" component={AddMedicinePage} />
@@ -47,6 +51,8 @@ function Router() {
       <ProtectedRoute path="/suppliers/new" component={AddSupplierPage} />
       <ProtectedRoute path="/billing/new" component={AddTransactionPage} />
       <ProtectedRoute path="/transactions/new" component={AddTransactionPage} />
+      <ProtectedRoute path="/add-order" component={AddOrderPage} />
+      <ProtectedRoute path="/orders/:id" component={OrderDetailsPage} />
       
       <Route component={NotFound} />
     </Switch>

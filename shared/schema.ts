@@ -13,6 +13,9 @@ export const users = pgTable("users", {
   contactNumber: text("contact_number"),
   mfaEnabled: boolean("mfa_enabled").default(false),
   mfaSecret: text("mfa_secret"),
+  emailMfaEnabled: boolean("email_mfa_enabled").default(false),
+  emailMfaCode: text("email_mfa_code"),
+  emailMfaExpiry: timestamp("email_mfa_expiry"),
   created_at: timestamp("created_at").defaultNow()
 });
 
@@ -117,6 +120,29 @@ export const suppliers = pgTable("suppliers", {
   created_at: timestamp("created_at").defaultNow()
 });
 
+// Orders model
+export const orders = pgTable("orders", {
+  id: serial("id").primaryKey(),
+  supplierId: integer("supplier_id").notNull(),
+  orderDate: timestamp("order_date").notNull().defaultNow(),
+  expectedDeliveryDate: date("expected_delivery_date"),
+  status: text("status").notNull().default("pending"), // pending, delivered, cancelled
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  paymentStatus: text("payment_status").notNull().default("unpaid"), // unpaid, partial, paid
+  notes: text("notes"),
+  created_at: timestamp("created_at").defaultNow()
+});
+
+// Order items model
+export const orderItems = pgTable("order_items", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  medicineId: integer("medicine_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  created_at: timestamp("created_at").defaultNow()
+});
+
 // Define insert schemas using drizzle-zod
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, created_at: true });
 export const insertMedicineSchema = createInsertSchema(medicines).omit({ id: true, created_at: true });
@@ -150,6 +176,33 @@ export const insertTransactionItemSchema = createInsertSchema(transactionItems)
 
 export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: true, created_at: true });
 
+// Order schemas with flexible date handling
+export const insertOrderSchema = createInsertSchema(orders)
+  .omit({ id: true, created_at: true })
+  .extend({
+    // Accept string or Date object for orderDate
+    orderDate: z.union([z.string(), z.date()]).transform(val => 
+      typeof val === 'string' ? new Date(val) : val
+    ),
+    // Accept string or Date object for expectedDeliveryDate
+    expectedDeliveryDate: z.union([z.string(), z.date(), z.null()]).transform(val => 
+      typeof val === 'string' ? new Date(val) : val
+    ).optional(),
+    // Accept string or number for totalAmount
+    totalAmount: z.union([z.string(), z.number()]).transform(val => 
+      typeof val === 'string' ? parseFloat(val) : val
+    )
+  });
+
+export const insertOrderItemSchema = createInsertSchema(orderItems)
+  .omit({ id: true, created_at: true })
+  .extend({
+    // Accept string or number for unitPrice
+    unitPrice: z.union([z.string(), z.number()]).transform(val => 
+      typeof val === 'string' ? parseFloat(val) : val
+    )
+  });
+
 // Define types using z.infer
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertMedicine = z.infer<typeof insertMedicineSchema>;
@@ -160,6 +213,8 @@ export type InsertPrescriptionItem = z.infer<typeof insertPrescriptionItemSchema
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type InsertTransactionItem = z.infer<typeof insertTransactionItemSchema>;
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 
 // Define select types
 export type User = typeof users.$inferSelect;
@@ -171,3 +226,5 @@ export type PrescriptionItem = typeof prescriptionItems.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type TransactionItem = typeof transactionItems.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
+export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;

@@ -11,7 +11,9 @@ import {
   insertPrescriptionItemSchema,
   insertTransactionSchema,
   insertTransactionItemSchema,
-  insertSupplierSchema
+  insertSupplierSchema,
+  insertOrderSchema,
+  insertOrderItemSchema
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -505,6 +507,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     if (!deleted) {
       return res.status(404).json({ message: "Supplier not found" });
+    }
+    
+    res.status(204).end();
+  });
+
+  // Order routes
+  app.get("/api/orders", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const orders = await storage.getAllOrders();
+    res.json(orders);
+  });
+  
+  app.get("/api/orders/recent", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const recentOrders = await storage.getRecentOrders(5);
+    
+    // For each order, get the supplier details
+    const ordersWithSuppliers = await Promise.all(
+      recentOrders.map(async order => {
+        const supplier = await storage.getSupplier(order.supplierId);
+        return {
+          ...order,
+          supplier: supplier ? supplier.name : 'Unknown'
+        };
+      })
+    );
+    
+    res.json(ordersWithSuppliers);
+  });
+  
+  app.get("/api/orders/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const id = parseInt(req.params.id);
+    const order = await storage.getOrder(id);
+    
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    const items = await storage.getOrderItems(id);
+    const supplier = await storage.getSupplier(order.supplierId);
+    
+    res.json({
+      ...order,
+      items,
+      supplier: supplier ? supplier.name : 'Unknown'
+    });
+  });
+  
+  app.get("/api/suppliers/:supplierId/orders", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const supplierId = parseInt(req.params.supplierId);
+    const orders = await storage.getOrdersBySupplier(supplierId);
+    
+    res.json(orders);
+  });
+  
+  app.post("/api/orders", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const { items, ...orderData } = req.body;
+      
+      const validatedOrderData = insertOrderSchema.parse(orderData);
+      const order = await storage.createOrder(validatedOrderData);
+      
+      // Add order items if provided
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const validatedItem = insertOrderItemSchema.parse({
+            ...item,
+            orderId: order.id
+          });
+          await storage.addOrderItem(validatedItem);
+        }
+      }
+      
+      const createdItems = await storage.getOrderItems(order.id);
+      
+      res.status(201).json({
+        ...order,
+        items: createdItems
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors });
+      }
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
+  app.put("/api/orders/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertOrderSchema.partial().parse(req.body);
+      const updatedOrder = await storage.updateOrder(id, validatedData);
+      
+      if (!updatedOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      // If status is changed to "delivered", update medicine stock quantities
+      if (validatedData.status === "delivered") {
+        const items = await storage.getOrderItems(id);
+        
+        for (const item of items) {
+          const medicine = await storage.getMedicine(item.medicineId);
+          if (medicine) {
+            const newQuantity = medicine.stockQuantity + item.quantity;
+            await storage.updateMedicine(medicine.id, { stockQuantity: newQuantity });
+          }
+        }
+      }
+      
+      res.json(updatedOrder);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors });
+      }
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
+  app.delete("/api/orders/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const id = parseInt(req.params.id);
+    const deleted = await storage.deleteOrder(id);
+    
+    if (!deleted) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    res.status(204).end();
+  });
+  
+  app.post("/api/orders/:orderId/items", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const orderId = parseInt(req.params.orderId);
+      const order = await storage.getOrder(orderId);
+      
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      const validatedItem = insertOrderItemSchema.parse({
+        ...req.body,
+        orderId
+      });
+      
+      const item = await storage.addOrderItem(validatedItem);
+      res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors });
+      }
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
+  app.delete("/api/orders/:orderId/items/:itemId", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    const itemId = parseInt(req.params.itemId);
+    const deleted = await storage.deleteOrderItem(itemId);
+    
+    if (!deleted) {
+      return res.status(404).json({ message: "Order item not found" });
     }
     
     res.status(204).end();

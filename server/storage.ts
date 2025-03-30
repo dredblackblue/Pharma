@@ -7,6 +7,8 @@ import { prescriptionItems, type PrescriptionItem, type InsertPrescriptionItem }
 import { transactions, type Transaction, type InsertTransaction } from "@shared/schema";
 import { transactionItems, type TransactionItem, type InsertTransactionItem } from "@shared/schema";
 import { suppliers, type Supplier, type InsertSupplier } from "@shared/schema";
+import { orders, type Order, type InsertOrder } from "@shared/schema";
+import { orderItems, type OrderItem, type InsertOrderItem } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { Store } from "express-session";
@@ -67,6 +69,18 @@ export interface IStorage {
   updateSupplier(id: number, supplier: Partial<InsertSupplier>): Promise<Supplier | undefined>;
   deleteSupplier(id: number): Promise<boolean>;
   
+  // Order methods
+  getOrder(id: number): Promise<Order | undefined>;
+  getAllOrders(): Promise<Order[]>;
+  getOrdersBySupplier(supplierId: number): Promise<Order[]>;
+  getRecentOrders(limit?: number): Promise<Order[]>;
+  createOrder(order: InsertOrder): Promise<Order>;
+  updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order | undefined>;
+  deleteOrder(id: number): Promise<boolean>;
+  addOrderItem(item: InsertOrderItem): Promise<OrderItem>;
+  getOrderItems(orderId: number): Promise<OrderItem[]>;
+  deleteOrderItem(id: number): Promise<boolean>;
+  
   // Session store
   sessionStore: Store;
 }
@@ -81,6 +95,8 @@ export class MemStorage implements IStorage {
   private transactions: Map<number, Transaction>;
   private transactionItems: Map<number, TransactionItem>;
   private suppliers: Map<number, Supplier>;
+  private orders: Map<number, Order>;
+  private orderItems: Map<number, OrderItem>;
   
   private currentUserId: number;
   private currentMedicineId: number;
@@ -91,6 +107,8 @@ export class MemStorage implements IStorage {
   private currentTransactionId: number;
   private currentTransactionItemId: number;
   private currentSupplierId: number;
+  private currentOrderId: number;
+  private currentOrderItemId: number;
   
   public sessionStore: Store;
 
@@ -104,6 +122,8 @@ export class MemStorage implements IStorage {
     this.transactions = new Map();
     this.transactionItems = new Map();
     this.suppliers = new Map();
+    this.orders = new Map();
+    this.orderItems = new Map();
     
     this.currentUserId = 1;
     this.currentMedicineId = 1;
@@ -114,6 +134,8 @@ export class MemStorage implements IStorage {
     this.currentTransactionId = 1;
     this.currentTransactionItemId = 1;
     this.currentSupplierId = 1;
+    this.currentOrderId = 1;
+    this.currentOrderItemId = 1;
     
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24h
@@ -358,6 +380,67 @@ export class MemStorage implements IStorage {
   
   async deleteSupplier(id: number): Promise<boolean> {
     return this.suppliers.delete(id);
+  }
+  
+  // Order methods
+  async getOrder(id: number): Promise<Order | undefined> {
+    return this.orders.get(id);
+  }
+  
+  async getAllOrders(): Promise<Order[]> {
+    return Array.from(this.orders.values());
+  }
+  
+  async getOrdersBySupplier(supplierId: number): Promise<Order[]> {
+    return Array.from(this.orders.values())
+      .filter(order => order.supplierId === supplierId);
+  }
+  
+  async getRecentOrders(limit = 5): Promise<Order[]> {
+    return Array.from(this.orders.values())
+      .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+      .slice(0, limit);
+  }
+  
+  async createOrder(insertOrder: InsertOrder): Promise<Order> {
+    const id = this.currentOrderId++;
+    const order: Order = { ...insertOrder, id, created_at: new Date() };
+    this.orders.set(id, order);
+    return order;
+  }
+  
+  async updateOrder(id: number, orderUpdate: Partial<InsertOrder>): Promise<Order | undefined> {
+    const order = this.orders.get(id);
+    if (!order) return undefined;
+    
+    const updatedOrder = { ...order, ...orderUpdate };
+    this.orders.set(id, updatedOrder);
+    return updatedOrder;
+  }
+  
+  async deleteOrder(id: number): Promise<boolean> {
+    // Also delete associated order items
+    const orderItems = await this.getOrderItems(id);
+    for (const item of orderItems) {
+      this.orderItems.delete(item.id);
+    }
+    return this.orders.delete(id);
+  }
+  
+  async addOrderItem(insertItem: InsertOrderItem): Promise<OrderItem> {
+    const id = this.currentOrderItemId++;
+    const item: OrderItem = { ...insertItem, id, created_at: new Date() };
+    this.orderItems.set(id, item);
+    return item;
+  }
+  
+  async getOrderItems(orderId: number): Promise<OrderItem[]> {
+    return Array.from(this.orderItems.values())
+      .filter(item => item.orderId === orderId);
+  }
+  
+  async deleteOrderItem(id: number): Promise<boolean> {
+    return this.orderItems.delete(id);
   }
   
   // Initialize demo data
