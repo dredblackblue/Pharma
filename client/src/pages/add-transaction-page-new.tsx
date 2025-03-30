@@ -4,7 +4,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -40,32 +40,32 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 const AddTransactionPage = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { toast } = useToast();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
-  // Fetch patients
+  // Get patients
   const { data: patients } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
   });
 
-  // Fetch medicines
-  const { data: medicines } = useQuery<Medicine[]>({
-    queryKey: ["/api/medicines"],
-  });
-
-  // Fetch prescriptions
+  // Get prescriptions
   const { data: prescriptions } = useQuery<Prescription[]>({
     queryKey: ["/api/prescriptions"],
   });
 
-  // Set up form with default values
+  // Get medicines
+  const { data: medicines } = useQuery<Medicine[]>({
+    queryKey: ["/api/medicines"],
+  });
+
+  // Initialize form
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       patientId: 0,
       prescriptionId: undefined,
-      transactionDate: new Date().toISOString(),
+      transactionDate: new Date().toISOString().split('T')[0], // Just date part in YYYY-MM-DD format
       totalAmount: 0,
       paymentMethod: "Cash",
       status: "Completed",
@@ -80,48 +80,43 @@ const AddTransactionPage = () => {
     },
   });
 
-  // Set up field array for items
+  // Field array for transaction items
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "items",
   });
 
-  // Calculate total amount whenever items change
-  const calculateTotal = () => {
-    const items = form.getValues().items || [];
-    const total = items.reduce((sum, item) => {
-      return sum + (Number(item.quantity) * Number(item.unitPrice));
-    }, 0);
-    form.setValue("totalAmount", total);
-    return total;
-  };
-
-  // Update price when medicine selection changes
+  // Helper to update price based on selected medicine
   const updatePrice = (index: number, medicineId: number) => {
-    const medicine = medicines?.find(m => m.id === medicineId);
+    const medicine = medicines?.find((m) => m.id === medicineId);
     if (medicine) {
-      form.setValue(`items.${index}.unitPrice`, Number(medicine.unitPrice));
+      form.setValue(`items.${index}.unitPrice`, medicine.unitPrice || 0);
       calculateTotal();
     }
   };
 
-  // Reset form when data is loaded
+  // Calculate total amount
+  const calculateTotal = () => {
+    const items = form.getValues().items;
+    const total = items.reduce((sum, item) => {
+      return sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+    }, 0);
+    
+    // Format to 2 decimal places to avoid floating point issues
+    const formattedTotal = parseFloat(total.toFixed(2));
+    form.setValue("totalAmount", formattedTotal);
+    return formattedTotal;
+  };
+
+  // Initialize first item when medicines are loaded
   useEffect(() => {
-    if (patients?.length && medicines?.length) {
-      form.reset({
-        ...form.getValues(),
-        patientId: patients[0]?.id || 0,
-        items: [
-          {
-            medicineId: medicines[0]?.id || 0,
-            quantity: 1,
-            unitPrice: Number(medicines[0]?.unitPrice) || 0,
-          },
-        ],
-      });
+    if (medicines && medicines.length > 0 && fields.length === 1 && form.getValues().items[0].medicineId === 0) {
+      const firstMedicine = medicines[0];
+      form.setValue("items.0.medicineId", firstMedicine.id);
+      form.setValue("items.0.unitPrice", firstMedicine.unitPrice || 0);
       calculateTotal();
     }
-  }, [patients, medicines, form]);
+  }, [medicines, form]);
 
   // Create transaction mutation
   const mutation = useMutation({
@@ -130,13 +125,9 @@ const AddTransactionPage = () => {
       const transactionData = {
         patientId: Number(data.patientId),
         // Only include prescriptionId if it's defined and not zero
-        ...(data.prescriptionId && Number(data.prescriptionId) !== 0 
-            ? { prescriptionId: Number(data.prescriptionId) } 
-            : {}),
-        // Make sure the date is in ISO format
-        transactionDate: data.transactionDate.includes('T') 
-            ? data.transactionDate 
-            : new Date(data.transactionDate).toISOString(),
+        ...(data.prescriptionId && Number(data.prescriptionId) !== 0 ? { prescriptionId: Number(data.prescriptionId) } : {}),
+        // Convert YYYY-MM-DD to ISO date string
+        transactionDate: new Date(data.transactionDate + "T00:00:00Z").toISOString(),
         // Format to 2 decimal places for money
         totalAmount: parseFloat(Number(data.totalAmount).toFixed(2)),
         paymentMethod: data.paymentMethod,
@@ -154,7 +145,7 @@ const AddTransactionPage = () => {
       const res = await apiRequest("POST", "/api/transactions", transactionData);
       if (!res.ok) {
         const errorData = await res.json();
-        console.error("Transaction error:", errorData);
+        console.error("Error response:", errorData);
         throw new Error(JSON.stringify(errorData));
       }
       return await res.json();
@@ -165,24 +156,16 @@ const AddTransactionPage = () => {
         title: "Transaction Created",
         description: "The transaction has been created successfully",
       });
-      setLocation("/transactions");
+      setLocation("/billing");
     },
     onError: (error: Error) => {
-      console.error("Transaction error details:", error);
-      
+      console.error("Transaction error:", error);
       let errorMessage = "An unknown error occurred";
+      
       try {
-        // Try to parse the error message if it's JSON
-        const parsedError = JSON.parse(error.message);
-        if (parsedError && parsedError.message) {
-          errorMessage = Array.isArray(parsedError.message) 
-            ? parsedError.message.map((m: any) => JSON.stringify(m)).join(', ') 
-            : parsedError.message;
-        } else {
-          errorMessage = JSON.stringify(parsedError);
-        }
+        // Try to parse error message if it's JSON
+        errorMessage = JSON.stringify(JSON.parse(error.message), null, 2);
       } catch (e) {
-        // If not JSON, use the raw message
         errorMessage = error.message;
       }
       
@@ -195,17 +178,10 @@ const AddTransactionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Calculate total one more time to ensure accuracy
+    // Calculate the final total
     const finalTotal = calculateTotal();
     
-    // No additional formatting needed here as we already handle all formatting in the mutation function
-    // This allows us to keep the raw form data intact in case we need to inspect it for debugging
-    console.log("Submitting form data:", {
-      ...data,
-      totalAmount: finalTotal
-    });
-    
-    // Just pass the data with the updated total directly to the mutation
+    // Submit with the calculated total
     mutation.mutate({
       ...data,
       totalAmount: finalTotal
@@ -241,7 +217,7 @@ const AddTransactionPage = () => {
                         <FormItem>
                           <FormLabel>Patient</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(Number(value))} 
+                            onValueChange={field.onChange} 
                             value={field.value?.toString() || "0"}
                           >
                             <FormControl>
@@ -274,7 +250,7 @@ const AddTransactionPage = () => {
                               if (value === "none") {
                                 field.onChange(undefined);
                               } else {
-                                field.onChange(Number(value));
+                                field.onChange(value);
                               }
                             }} 
                             value={field.value?.toString() || "none"}
@@ -310,16 +286,8 @@ const AddTransactionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  field.onChange(new Date(e.target.value).toISOString());
-                                }
-                              }}
-                              value={
-                                field.value 
-                                  ? new Date(field.value).toISOString().split('T')[0]
-                                  : new Date().toISOString().split('T')[0]
-                              }
+                              onChange={field.onChange}
+                              value={field.value}
                             />
                           </FormControl>
                           <FormMessage />
@@ -434,9 +402,8 @@ const AddTransactionPage = () => {
                                 <FormLabel>Medicine</FormLabel>
                                 <Select 
                                   onValueChange={(value) => {
-                                    const medicineId = Number(value);
-                                    field.onChange(medicineId);
-                                    updatePrice(index, medicineId);
+                                    field.onChange(value);
+                                    updatePrice(index, Number(value));
                                   }} 
                                   value={field.value?.toString() || "0"}
                                 >
@@ -470,7 +437,7 @@ const AddTransactionPage = () => {
                                     type="number" 
                                     min="1" 
                                     onChange={(e) => {
-                                      field.onChange(Number(e.target.value) || 1);
+                                      field.onChange(e.target.value);
                                       calculateTotal();
                                     }}
                                     value={field.value}
@@ -494,7 +461,7 @@ const AddTransactionPage = () => {
                                     step="0.01" 
                                     min="0" 
                                     onChange={(e) => {
-                                      field.onChange(Number(e.target.value) || 0);
+                                      field.onChange(e.target.value);
                                       calculateTotal();
                                     }}
                                     value={field.value}
@@ -518,9 +485,8 @@ const AddTransactionPage = () => {
                                   setTimeout(() => calculateTotal(), 0);
                                 }
                               }}
-                              disabled={fields.length <= 1}
                             >
-                              <Trash2 className="h-5 w-5" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -528,21 +494,19 @@ const AddTransactionPage = () => {
                     </Card>
                   ))}
                   
-                  {/* Total amount display */}
-                  <div className="flex justify-end pt-4">
-                    <div className="bg-slate-50 border border-slate-200 rounded-md px-4 py-3 flex items-center space-x-4">
-                      <RefreshCw className="h-5 w-5 text-slate-400" />
-                      <div>
-                        <p className="text-sm text-slate-500">Total Amount</p>
-                        <p className="text-lg font-semibold">
-                          ${form.watch("totalAmount").toFixed(2)}
-                        </p>
-                      </div>
+                  {/* Total amount */}
+                  <div className="flex justify-end">
+                    <div className="bg-slate-50 p-4 rounded-lg shadow-sm border border-slate-200">
+                      <p className="text-sm text-slate-500 mb-1">Total Amount</p>
+                      <p className="text-2xl font-bold text-slate-800">
+                        ${form.watch("totalAmount").toFixed(2)}
+                      </p>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={calculateTotal}
+                        className="mt-2 text-xs"
+                        onClick={() => calculateTotal()}
                       >
                         Recalculate
                       </Button>
@@ -555,7 +519,7 @@ const AddTransactionPage = () => {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={() => setLocation("/transactions")}
+                    onClick={() => setLocation("/billing")}
                   >
                     Cancel
                   </Button>
