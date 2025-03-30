@@ -46,6 +46,8 @@ const transactionItemSchema = z.object({
     z.string().min(1, "Price is required").transform(val => parseFloat(val)),
     z.number().min(0, "Price cannot be negative")
   ]),
+  // Include subtotal for type completeness
+  subtotal: z.number().optional()
 });
 
 // Extend the schema for form validation
@@ -61,6 +63,7 @@ const formSchema = insertTransactionSchema.extend({
     z.number().optional(),
     z.undefined()
   ]),
+  transactionType: z.string().optional().default("Sale"),
   items: z.array(transactionItemSchema),
 });
 
@@ -166,19 +169,27 @@ const AddTransactionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Convert string IDs to numbers, and handle data appropriately
+    // Prepare items with proper type conversion
+    const formattedItems = data.items.map(item => ({
+      medicineId: Number(item.medicineId),
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice)
+    }));
+    
+    // Create the submission object with correct types
     const formattedData = {
       ...data,
       patientId: Number(data.patientId),
-      totalAmount: data.totalAmount.toString(), // API expects string for totalAmount
-      transactionDate: data.transactionDate, // Pass the Date object directly
-      items: data.items.map(item => ({
-        ...item,
-        medicineId: Number(item.medicineId),
-      })),
+      totalAmount: totalAmount.toString(), 
+      // Ensure transactionDate is always a Date object
+      transactionDate: typeof data.transactionDate === 'string' 
+        ? new Date(data.transactionDate) 
+        : (data.transactionDate || new Date()),
+      items: formattedItems
     };
     
-    mutation.mutate(formattedData);
+    // Cast the data to match the expected mutation input type
+    mutation.mutate(formattedData as FormValues);
   };
 
   // Reset form when data is loaded
@@ -256,12 +267,11 @@ const AddTransactionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              {...field} 
-                              value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                              {...field}
+                              value={field.value ? (field.value instanceof Date ? field.value.toISOString().split('T')[0] : new Date(field.value).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  const date = new Date(e.target.value);
-                                  field.onChange(date);
+                                  field.onChange(new Date(e.target.value).toISOString());
                                 }
                               }}
                             />

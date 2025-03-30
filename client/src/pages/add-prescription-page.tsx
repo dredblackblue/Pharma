@@ -135,17 +135,19 @@ const AddPrescriptionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Convert string IDs to numbers and ensure dates are in the correct format
+    // Simplify the form data submission with explicit type handling
     const formattedData = {
-      ...data,
       patientId: Number(data.patientId),
-      doctorId: Number(data.doctorId),
-      // Convert dates to strings in proper date format for the API
-      issueDate: new Date().toISOString(), // Default to today's date
-      expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(), // Default to one month from now
+      doctorId: Number(data.doctorId), 
+      issueDate: data.issueDate || new Date().toISOString(),
+      expiryDate: data.expiryDate || new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
+      status: data.status || "Active",
+      notes: data.notes || "",
       items: data.items.map(item => ({
-        ...item,
         medicineId: Number(item.medicineId),
+        quantity: Number(item.quantity),
+        dosage: item.dosage || "",
+        instructions: item.instructions || ""
       })),
     };
     
@@ -260,11 +262,10 @@ const AddPrescriptionPage = () => {
                             <Input 
                               type="date" 
                               {...field}
-                              value={new Date().toISOString().split('T')[0]}
+                              value={field.value ? new Date(field.value).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  const date = new Date(e.target.value);
-                                  field.onChange(date.toISOString());
+                                  field.onChange(new Date(e.target.value).toISOString());
                                 }
                               }}
                             />
@@ -284,11 +285,10 @@ const AddPrescriptionPage = () => {
                             <Input 
                               type="date" 
                               {...field}
-                              value={new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]}
+                              value={field.value ? new Date(field.value).toISOString().split('T')[0] : new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]}
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  const date = new Date(e.target.value);
-                                  field.onChange(date.toISOString());
+                                  field.onChange(new Date(e.target.value).toISOString());
                                 }
                               }}
                             />
@@ -347,7 +347,7 @@ const AddPrescriptionPage = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => append({
-                        medicineId: medicines && medicines.length > 0 ? medicines[0].id : 0,
+                        medicineId: medicines && medicines.length > 0 ? Number(medicines[0].id) : 0,
                         quantity: 1,
                         dosage: "",
                         instructions: "",
