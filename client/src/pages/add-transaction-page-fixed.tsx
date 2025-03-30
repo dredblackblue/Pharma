@@ -138,17 +138,17 @@ const AddTransactionPage = () => {
         ...(data.prescriptionId && data.prescriptionId > 0 
             ? { prescriptionId: Number(data.prescriptionId) } 
             : {}),
-        // Format date properly
-        transactionDate: new Date(data.transactionDate).toISOString(),
-        // String for decimal in database
-        totalAmount: data.totalAmount.toString(),
+        // Create an actual Date object (not just a string)
+        transactionDate: new Date(data.transactionDate),
+        // Convert to number to match schema expectations
+        totalAmount: Number(data.totalAmount),
         paymentMethod: data.paymentMethod,
         status: data.status,
         notes: data.notes || "",
         items: data.items.map(item => ({
           medicineId: Number(item.medicineId),
           quantity: Number(item.quantity),
-          unitPrice: item.unitPrice.toString() // String for decimal in database
+          unitPrice: Number(item.unitPrice) // Convert to number to match schema expectations
         })),
       };
       
