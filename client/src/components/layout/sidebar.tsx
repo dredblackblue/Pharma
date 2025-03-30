@@ -69,8 +69,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         <nav className="flex-1 px-2 py-4 space-y-1">
           {navItems.map((item) => (
             <Link key={item.path} href={item.path}>
-              <a
-                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+              <div
+                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md cursor-pointer ${
                   location === item.path
                     ? "bg-slate-700 text-white"
                     : "text-slate-300 hover:bg-slate-700 hover:text-white"
@@ -78,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               >
                 {item.icon}
                 {item.label}
-              </a>
+              </div>
             </Link>
           ))}
         </nav>
@@ -86,10 +86,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         {/* Bottom Links */}
         <div className="px-4 py-3 mt-auto border-t border-slate-700">
           <Link href="/settings">
-            <a className="flex items-center px-4 py-2 text-sm font-medium rounded-md text-slate-300 hover:bg-slate-700 hover:text-white">
+            <div className="flex items-center px-4 py-2 text-sm font-medium rounded-md text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer">
               <Settings className="w-5 h-5 mr-3" />
               Settings
-            </a>
+            </div>
           </Link>
           <button 
             onClick={handleLogout}
