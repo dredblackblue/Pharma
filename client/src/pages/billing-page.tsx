@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Transaction } from "@shared/schema";
 import Header from "@/components/layout/header";
 import Sidebar from "@/components/layout/sidebar";
@@ -29,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const BillingPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [_, setLocation] = useLocation();
   
   const { data: transactions, isLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions"],
@@ -69,7 +71,7 @@ const BillingPage = () => {
           {/* Page Header */}
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold text-slate-800">Billing & Transactions</h1>
-            <Button>
+            <Button onClick={() => setLocation("/transactions/new")}>
               <Plus className="mr-2 h-4 w-4" />
               New Invoice
             </Button>

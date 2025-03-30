@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Doctor } from "@shared/schema";
 import Header from "@/components/layout/header";
 import Sidebar from "@/components/layout/sidebar";
@@ -28,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const DoctorsPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [_, setLocation] = useLocation();
   
   const { data: doctors, isLoading } = useQuery<Doctor[]>({
     queryKey: ["/api/doctors"],
@@ -59,7 +61,7 @@ const DoctorsPage = () => {
           {/* Page Header */}
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold text-slate-800">Doctor Directory</h1>
-            <Button>
+            <Button onClick={() => setLocation("/doctors/new")}>
               <Plus className="mr-2 h-4 w-4" />
               Add New Doctor
             </Button>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Supplier } from "@shared/schema";
 import Header from "@/components/layout/header";
 import Sidebar from "@/components/layout/sidebar";
@@ -27,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const SuppliersPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [_, setLocation] = useLocation();
   
   const { data: suppliers, isLoading } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
@@ -62,7 +64,7 @@ const SuppliersPage = () => {
           {/* Page Header */}
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold text-slate-800">Supplier Management</h1>
-            <Button>
+            <Button onClick={() => setLocation("/suppliers/new")}>
               <Plus className="mr-2 h-4 w-4" />
               Add New Supplier
             </Button>
