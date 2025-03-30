@@ -14,7 +14,6 @@ import Sidebar from "@/components/layout/sidebar";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -28,40 +27,40 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { insertPrescriptionSchema, Medicine, Patient, Doctor } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { 
+  insertPrescriptionSchema, 
+  insertPrescriptionItemSchema,
+  Medicine, 
+  Patient, 
+  Doctor 
+} from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Define the schema for prescription items
 const prescriptionItemSchema = z.object({
-  medicineId: z.union([
-    z.string().min(1, "Medicine is required"),
-    z.number({
-      required_error: "Medicine is required",
-    })
-  ]),
-  quantity: z.union([
-    z.string().min(1, "Quantity is required").transform(val => parseInt(val)),
-    z.number().min(1, "Quantity must be at least 1")
-  ]),
-  dosage: z.string().min(1, "Dosage information is required"),
+  medicineId: z.number({
+    required_error: "Medicine is required",
+  }),
+  quantity: z.number({
+    required_error: "Quantity is required",
+  }).min(1, "Quantity must be at least 1"),
+  dosage: z.string().optional(),
   instructions: z.string().optional(),
 });
 
 // Extend the schema for form validation
-const formSchema = insertPrescriptionSchema.extend({
-  patientId: z.union([
-    z.string().min(1, "Patient is required"),
-    z.number({
-      required_error: "Patient is required",
-    })
-  ]),
-  doctorId: z.union([
-    z.string().min(1, "Doctor is required"),
-    z.number({
-      required_error: "Doctor is required",
-    })
-  ]),
-  items: z.array(prescriptionItemSchema),
+const formSchema = z.object({
+  patientId: z.number({
+    required_error: "Patient is required",
+  }),
+  doctorId: z.number({
+    required_error: "Doctor is required",
+  }),
+  issueDate: z.string().or(z.date()),
+  expiryDate: z.string().or(z.date()),
+  status: z.string().default("Active"),
+  notes: z.string().optional(),
+  items: z.array(prescriptionItemSchema).min(1, "At least one medicine is required"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -69,7 +68,6 @@ type FormValues = z.infer<typeof formSchema>;
 const AddPrescriptionPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
   // Fetch data for dropdowns
@@ -113,12 +111,35 @@ const AddPrescriptionPage = () => {
 
   const mutation = useMutation({
     mutationFn: async (data: FormValues) => {
-      const res = await apiRequest("POST", "/api/prescriptions", data);
-      return res.json();
+      // Format the prescription data
+      const prescription = {
+        patientId: data.patientId,
+        doctorId: data.doctorId,
+        issueDate: typeof data.issueDate === 'string' ? data.issueDate : data.issueDate.toISOString(),
+        expiryDate: typeof data.expiryDate === 'string' ? data.expiryDate : data.expiryDate.toISOString(),
+        status: data.status,
+        notes: data.notes || ""
+      };
+      
+      // Create the prescription first
+      const res = await apiRequest("POST", "/api/prescriptions", prescription);
+      const prescriptionResult = await res.json();
+      
+      // Then add each prescription item with the new prescription ID
+      for (const item of data.items) {
+        await apiRequest("POST", "/api/prescription-items", {
+          prescriptionId: prescriptionResult.id,
+          medicineId: item.medicineId,
+          quantity: item.quantity,
+          dosage: item.dosage || "",
+          instructions: item.instructions || ""
+        });
+      }
+      
+      return prescriptionResult;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prescriptions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({
         title: "Prescription Created",
         description: "The prescription has been created successfully",
@@ -133,26 +154,6 @@ const AddPrescriptionPage = () => {
       });
     },
   });
-
-  const onSubmit = (data: FormValues) => {
-    // Simplify the form data submission with explicit type handling
-    const formattedData = {
-      patientId: Number(data.patientId),
-      doctorId: Number(data.doctorId), 
-      issueDate: data.issueDate || new Date().toISOString(),
-      expiryDate: data.expiryDate || new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
-      status: data.status || "Active",
-      notes: data.notes || "",
-      items: data.items.map(item => ({
-        medicineId: Number(item.medicineId),
-        quantity: Number(item.quantity),
-        dosage: item.dosage || "",
-        instructions: item.instructions || ""
-      })),
-    };
-    
-    mutation.mutate(formattedData);
-  };
 
   // Reset form when data is loaded
   useEffect(() => {
@@ -171,7 +172,23 @@ const AddPrescriptionPage = () => {
         ],
       });
     }
-  }, [patients, doctors, medicines]);
+  }, [patients, doctors, medicines, form]);
+
+  const onSubmit = (data: FormValues) => {
+    // Convert any date strings to proper ISO format
+    const formattedData = {
+      ...data,
+      patientId: Number(data.patientId),
+      doctorId: Number(data.doctorId),
+      items: data.items.map(item => ({
+        ...item,
+        medicineId: Number(item.medicineId),
+        quantity: Number(item.quantity)
+      }))
+    };
+    
+    mutation.mutate(formattedData);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -201,8 +218,8 @@ const AddPrescriptionPage = () => {
                         <FormItem>
                           <FormLabel>Patient</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(parseInt(value))} 
-                            defaultValue={field.value?.toString() || ''}
+                            onValueChange={(value) => field.onChange(Number(value))} 
+                            value={field.value?.toString()}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -229,8 +246,8 @@ const AddPrescriptionPage = () => {
                         <FormItem>
                           <FormLabel>Doctor</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(parseInt(value))} 
-                            defaultValue={field.value?.toString() || ''}
+                            onValueChange={(value) => field.onChange(Number(value))} 
+                            value={field.value?.toString()}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -261,13 +278,16 @@ const AddPrescriptionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              {...field}
-                              value={field.value ? new Date(field.value).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
                               onChange={(e) => {
                                 if (e.target.value) {
                                   field.onChange(new Date(e.target.value).toISOString());
                                 }
                               }}
+                              value={
+                                field.value 
+                                  ? new Date(field.value).toISOString().split('T')[0]
+                                  : new Date().toISOString().split('T')[0]
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -284,13 +304,16 @@ const AddPrescriptionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              {...field}
-                              value={field.value ? new Date(field.value).toISOString().split('T')[0] : new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]}
                               onChange={(e) => {
                                 if (e.target.value) {
                                   field.onChange(new Date(e.target.value).toISOString());
                                 }
                               }}
+                              value={
+                                field.value 
+                                  ? new Date(field.value).toISOString().split('T')[0]
+                                  : new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -304,7 +327,7 @@ const AddPrescriptionPage = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Status</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -330,7 +353,7 @@ const AddPrescriptionPage = () => {
                       <FormItem>
                         <FormLabel>Additional Notes</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Any special instructions or notes" {...field} value={field.value || ''} />
+                          <Textarea placeholder="Any special instructions or notes" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -369,8 +392,8 @@ const AddPrescriptionPage = () => {
                               <FormItem>
                                 <FormLabel>Medicine</FormLabel>
                                 <Select 
-                                  onValueChange={(value) => field.onChange(parseInt(value))} 
-                                  defaultValue={field.value?.toString() || ''}
+                                  onValueChange={(value) => field.onChange(Number(value))} 
+                                  value={field.value?.toString()}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -400,8 +423,8 @@ const AddPrescriptionPage = () => {
                                   <Input 
                                     type="number" 
                                     min="1" 
-                                    {...field} 
-                                    onChange={e => field.onChange(parseInt(e.target.value) || 1)} 
+                                    onChange={e => field.onChange(Number(e.target.value) || 1)} 
+                                    value={field.value}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -444,7 +467,7 @@ const AddPrescriptionPage = () => {
                             <FormItem className="mt-4">
                               <FormLabel>Instructions</FormLabel>
                               <FormControl>
-                                <Textarea placeholder="Special instructions for this medication" {...field} value={field.value || ''} />
+                                <Textarea placeholder="Special instructions for this medication" {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>

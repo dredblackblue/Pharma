@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,44 +27,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { insertTransactionSchema, Medicine, Patient } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { 
+  Patient, 
+  Medicine, 
+  Prescription,
+  insertTransactionSchema,
+} from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Define the schema for transaction items
 const transactionItemSchema = z.object({
-  medicineId: z.union([
-    z.string().min(1, "Medicine is required"),
-    z.number({
-      required_error: "Medicine is required",
-    })
-  ]),
-  quantity: z.union([
-    z.string().min(1, "Quantity is required").transform(val => parseInt(val)),
-    z.number().min(1, "Quantity must be at least 1")
-  ]),
-  unitPrice: z.union([
-    z.string().min(1, "Price is required").transform(val => parseFloat(val)),
-    z.number().min(0, "Price cannot be negative")
-  ]),
-  // Include subtotal for type completeness
-  subtotal: z.number().optional()
+  medicineId: z.number({
+    required_error: "Medicine is required",
+  }),
+  quantity: z.number({
+    required_error: "Quantity is required",
+  }).min(1, "Quantity must be at least 1"),
+  unitPrice: z.number({
+    required_error: "Unit price is required",
+  }).min(0, "Price cannot be negative"),
 });
 
 // Extend the schema for form validation
-const formSchema = insertTransactionSchema.extend({
-  patientId: z.union([
-    z.string().min(1, "Patient is required"),
-    z.number({
-      required_error: "Patient is required",
-    })
-  ]),
-  prescriptionId: z.union([
-    z.string().transform(val => val ? parseInt(val) : undefined),
-    z.number().optional(),
-    z.undefined()
-  ]),
-  transactionType: z.string().optional().default("Sale"),
-  items: z.array(transactionItemSchema),
+const formSchema = z.object({
+  patientId: z.number({
+    required_error: "Patient is required",
+  }),
+  prescriptionId: z.number().optional(),
+  transactionDate: z.string().or(z.date()),
+  totalAmount: z.number().min(0, "Total amount cannot be negative"),
+  paymentMethod: z.string().default("Cash"),
+  status: z.string().default("Completed"),
+  notes: z.string().optional(),
+  items: z.array(transactionItemSchema).min(1, "At least one item is required"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -72,13 +67,15 @@ type FormValues = z.infer<typeof formSchema>;
 const AddTransactionPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const [totalAmount, setTotalAmount] = useState(0);
 
   // Fetch data for dropdowns
   const { data: patients } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
+  });
+
+  const { data: prescriptions } = useQuery<Prescription[]>({
+    queryKey: ["/api/prescriptions"],
   });
 
   const { data: medicines } = useQuery<Medicine[]>({
@@ -89,16 +86,17 @@ const AddTransactionPage = () => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       patientId: 0,
-      transactionDate: new Date(),
-      totalAmount: "0",
+      prescriptionId: undefined,
+      transactionDate: new Date().toISOString(),
+      totalAmount: 0,
       paymentMethod: "Cash",
       status: "Completed",
       notes: "",
       items: [
         {
-          medicineId: 0 as number,
-          quantity: 1 as number,
-          unitPrice: 0 as number,
+          medicineId: 0,
+          quantity: 1,
+          unitPrice: 0,
         },
       ],
     },
@@ -110,104 +108,113 @@ const AddTransactionPage = () => {
     name: "items",
   });
 
-  // Calculate total amount whenever items change
-  useEffect(() => {
-    const calculateTotal = () => {
-      const items = form.getValues("items");
-      const total = items.reduce((sum, item) => {
-        return sum + (item.quantity * item.unitPrice);
-      }, 0);
-      setTotalAmount(total);
-      form.setValue("totalAmount", total.toString());
-    };
+  // Calculate total amount when items change
+  const calculateTotal = () => {
+    const items = form.getValues().items || [];
+    const total = items.reduce((sum, item) => {
+      const quantity = Number(item.quantity) || 0;
+      const price = Number(item.unitPrice) || 0;
+      return sum + (quantity * price);
+    }, 0);
+    form.setValue("totalAmount", total);
+    return total;
+  };
 
-    calculateTotal();
-    
-    // Set up a subscription to form values changes
-    const subscription = form.watch((value, { name }) => {
-      if (name?.startsWith("items")) {
-        calculateTotal();
-      }
-    });
-    
-    return () => subscription.unsubscribe();
-  }, [form, fields]);
-
-  // Initialize medicine price when medicine is selected
-  const updateMedicinePrice = (index: number, medicineId: number) => {
-    if (medicines) {
-      const medicine = medicines.find(m => m.id === medicineId);
-      if (medicine) {
-        form.setValue(`items.${index}.unitPrice`, parseFloat(medicine.unitPrice.toString()));
-      }
+  // Update price when medicine is selected
+  const updatePrice = (index: number, medicineId: number) => {
+    const medicine = medicines?.find(m => m.id === medicineId);
+    if (medicine) {
+      form.setValue(`items.${index}.unitPrice`, Number(medicine.unitPrice));
+      calculateTotal();
     }
   };
 
   const mutation = useMutation({
     mutationFn: async (data: FormValues) => {
-      const res = await apiRequest("POST", "/api/transactions", data);
-      return res.json();
+      // Format the transaction data
+      const transaction = {
+        patientId: data.patientId,
+        prescriptionId: data.prescriptionId,
+        transactionDate: typeof data.transactionDate === 'string' 
+          ? data.transactionDate 
+          : data.transactionDate.toISOString(),
+        totalAmount: data.totalAmount,
+        paymentMethod: data.paymentMethod,
+        status: data.status,
+        notes: data.notes || ""
+      };
+      
+      // Create the transaction first
+      const res = await apiRequest("POST", "/api/transactions", transaction);
+      const transactionResult = await res.json();
+      
+      // Then add each transaction item with the new transaction ID
+      for (const item of data.items) {
+        await apiRequest("POST", "/api/transaction-items", {
+          transactionId: transactionResult.id,
+          medicineId: item.medicineId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        });
+      }
+      
+      return transactionResult;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent-transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/medicines"] }); // Inventory will be updated
       toast({
         title: "Transaction Created",
-        description: "The transaction has been processed successfully",
+        description: "The transaction has been created successfully",
       });
-      setLocation("/billing");
+      setLocation("/transactions");
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to process transaction",
+        title: "Failed to create transaction",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // Prepare items with proper type conversion
-    const formattedItems = data.items.map(item => ({
-      medicineId: Number(item.medicineId),
-      quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice)
-    }));
-    
-    // Create the submission object with correct types
-    const formattedData = {
-      ...data,
-      patientId: Number(data.patientId),
-      totalAmount: totalAmount.toString(), 
-      // Ensure transactionDate is always a Date object
-      transactionDate: typeof data.transactionDate === 'string' 
-        ? new Date(data.transactionDate) 
-        : (data.transactionDate || new Date()),
-      items: formattedItems
-    };
-    
-    // Cast the data to match the expected mutation input type
-    mutation.mutate(formattedData as FormValues);
-  };
-
   // Reset form when data is loaded
   useEffect(() => {
     if (patients?.length && medicines?.length) {
       form.reset({
         ...form.getValues(),
-        patientId: Number(patients[0]?.id || 0),
+        patientId: patients[0]?.id || 0,
         items: [
           {
-            medicineId: Number(medicines[0]?.id || 0),
+            medicineId: medicines[0]?.id || 0,
             quantity: 1,
-            unitPrice: parseFloat(medicines[0]?.unitPrice?.toString() || "0"),
+            unitPrice: Number(medicines[0]?.unitPrice) || 0,
           },
         ],
       });
+      calculateTotal();
     }
-  }, [patients, medicines]);
+  }, [patients, medicines, form]);
+
+  const onSubmit = (data: FormValues) => {
+    // Recalculate total just to be sure
+    const finalTotal = calculateTotal();
+    
+    // Convert string values to numbers
+    const formattedData = {
+      ...data,
+      patientId: Number(data.patientId),
+      prescriptionId: data.prescriptionId ? Number(data.prescriptionId) : undefined,
+      totalAmount: finalTotal,
+      items: data.items.map(item => ({
+        ...item,
+        medicineId: Number(item.medicineId),
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice)
+      }))
+    };
+    
+    mutation.mutate(formattedData);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -219,7 +226,7 @@ const AddTransactionPage = () => {
         <main className="flex-1 overflow-y-auto bg-slate-100 p-6">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-800">Create New Transaction</h1>
-            <p className="text-slate-500 mt-1">Process a new sale of medications</p>
+            <p className="text-slate-500 mt-1">Record a new sale of medications</p>
           </div>
           
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 max-w-5xl">
@@ -237,8 +244,8 @@ const AddTransactionPage = () => {
                         <FormItem>
                           <FormLabel>Patient</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(parseInt(value))} 
-                            defaultValue={field.value?.toString() || ''}
+                            onValueChange={(value) => field.onChange(Number(value))} 
+                            value={field.value?.toString()}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -260,22 +267,28 @@ const AddTransactionPage = () => {
                     
                     <FormField
                       control={form.control}
-                      name="transactionDate"
+                      name="prescriptionId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Transaction Date</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="date" 
-                              {...field}
-                              value={field.value ? (field.value instanceof Date ? field.value.toISOString().split('T')[0] : new Date(field.value).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  field.onChange(new Date(e.target.value).toISOString());
-                                }
-                              }}
-                            />
-                          </FormControl>
+                          <FormLabel>Prescription (Optional)</FormLabel>
+                          <Select 
+                            onValueChange={(value) => field.onChange(value ? Number(value) : undefined)} 
+                            value={field.value?.toString() || ""}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a prescription" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="">None</SelectItem>
+                              {prescriptions?.map((prescription) => (
+                                <SelectItem key={prescription.id} value={prescription.id.toString()}>
+                                  Prescription #{prescription.id} ({new Date(prescription.issueDate).toLocaleDateString()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -285,11 +298,37 @@ const AddTransactionPage = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <FormField
                       control={form.control}
+                      name="transactionDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Transaction Date</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="date" 
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  field.onChange(new Date(e.target.value).toISOString());
+                                }
+                              }}
+                              value={
+                                field.value 
+                                  ? new Date(field.value).toISOString().split('T')[0]
+                                  : new Date().toISOString().split('T')[0]
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
                       name="paymentMethod"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Payment Method</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select payment method" />
@@ -300,7 +339,7 @@ const AddTransactionPage = () => {
                               <SelectItem value="Credit Card">Credit Card</SelectItem>
                               <SelectItem value="Debit Card">Debit Card</SelectItem>
                               <SelectItem value="Insurance">Insurance</SelectItem>
-                              <SelectItem value="Mobile Payment">Mobile Payment</SelectItem>
+                              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -314,7 +353,7 @@ const AddTransactionPage = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Status</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -331,29 +370,6 @@ const AddTransactionPage = () => {
                         </FormItem>
                       )}
                     />
-                    
-                    <FormField
-                      control={form.control}
-                      name="totalAmount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Total Amount ($)</FormLabel>
-                          <FormControl>
-                            <div className="flex items-center">
-                              <Input 
-                                type="number" 
-                                step="0.01" 
-                                readOnly 
-                                {...field} 
-                                value={totalAmount.toFixed(2)} 
-                              />
-                              <Calculator className="ml-2 text-slate-400" />
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </div>
                   
                   <FormField
@@ -361,9 +377,9 @@ const AddTransactionPage = () => {
                     name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notes</FormLabel>
+                        <FormLabel>Additional Notes</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Additional notes about this transaction" {...field} value={field.value || ''} />
+                          <Textarea placeholder="Any special notes about this transaction" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -380,13 +396,12 @@ const AddTransactionPage = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const medicineId = medicines && medicines.length > 0 ? Number(medicines[0].id) : 0;
-                        const unitPrice = medicines && medicines.length > 0 ? parseFloat(medicines[0].unitPrice?.toString() || "0") : 0;
                         append({
-                          medicineId: medicineId as number,
+                          medicineId: medicines && medicines.length > 0 ? Number(medicines[0].id) : 0,
                           quantity: 1,
-                          unitPrice: unitPrice as number,
+                          unitPrice: medicines && medicines.length > 0 ? Number(medicines[0].unitPrice) : 0,
                         });
+                        setTimeout(() => calculateTotal(), 0);
                       }}
                     >
                       <Plus className="h-4 w-4 mr-2" />
@@ -406,10 +421,11 @@ const AddTransactionPage = () => {
                                 <FormLabel>Medicine</FormLabel>
                                 <Select 
                                   onValueChange={(value) => {
-                                    field.onChange(parseInt(value));
-                                    updateMedicinePrice(index, parseInt(value));
-                                  }}
-                                  defaultValue={field.value?.toString() || ''}
+                                    const numValue = Number(value);
+                                    field.onChange(numValue);
+                                    updatePrice(index, numValue);
+                                  }} 
+                                  value={field.value?.toString()}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -439,8 +455,11 @@ const AddTransactionPage = () => {
                                   <Input 
                                     type="number" 
                                     min="1" 
-                                    {...field} 
-                                    onChange={e => field.onChange(parseInt(e.target.value) || 1)} 
+                                    onChange={(e) => {
+                                      field.onChange(Number(e.target.value) || 1);
+                                      calculateTotal();
+                                    }}
+                                    value={field.value}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -453,13 +472,17 @@ const AddTransactionPage = () => {
                             name={`items.${index}.unitPrice`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Unit Price ($)</FormLabel>
+                                <FormLabel>Unit Price</FormLabel>
                                 <FormControl>
                                   <Input 
                                     type="number" 
                                     step="0.01" 
-                                    {...field} 
-                                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)} 
+                                    min="0" 
+                                    onChange={(e) => {
+                                      field.onChange(Number(e.target.value) || 0);
+                                      calculateTotal();
+                                    }}
+                                    value={field.value}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -467,45 +490,45 @@ const AddTransactionPage = () => {
                             )}
                           />
                           
-                          <div className="flex flex-col justify-between">
-                            <div className="flex items-center justify-between">
-                              <FormLabel>Subtotal</FormLabel>
-                              <div className="text-sm font-medium">
-                                ${((form.getValues(`items.${index}.quantity`) || 0) * (form.getValues(`items.${index}.unitPrice`) || 0)).toFixed(2)}
-                              </div>
-                            </div>
-                            <div className="flex justify-end mt-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => fields.length > 1 && remove(index)}
-                                disabled={fields.length <= 1}
-                              >
-                                <Trash2 className="h-5 w-5" />
-                              </Button>
-                            </div>
+                          <div className="flex items-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => {
+                                if (fields.length > 1) {
+                                  remove(index);
+                                  setTimeout(() => calculateTotal(), 0);
+                                }
+                              }}
+                              disabled={fields.length <= 1}
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
                   ))}
                   
-                  <div className="flex justify-end mt-4">
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 w-64">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Subtotal:</span>
-                        <span>${totalAmount.toFixed(2)}</span>
+                  <div className="flex justify-end pt-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-md px-4 py-3 flex items-center space-x-4">
+                      <Calculator className="h-5 w-5 text-slate-400" />
+                      <div>
+                        <p className="text-sm text-slate-500">Total Amount</p>
+                        <p className="text-lg font-semibold">
+                          ${form.watch("totalAmount").toFixed(2)}
+                        </p>
                       </div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Tax:</span>
-                        <span>$0.00</span>
-                      </div>
-                      <div className="flex justify-between font-medium text-lg pt-2 border-t border-slate-200">
-                        <span>Total:</span>
-                        <span className="text-primary-600">${totalAmount.toFixed(2)}</span>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={calculateTotal}
+                      >
+                        Recalculate
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -514,7 +537,7 @@ const AddTransactionPage = () => {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={() => setLocation("/billing")}
+                    onClick={() => setLocation("/transactions")}
                   >
                     Cancel
                   </Button>
@@ -528,7 +551,7 @@ const AddTransactionPage = () => {
                         Processing...
                       </>
                     ) : (
-                      'Process Transaction'
+                      'Create Transaction'
                     )}
                   </Button>
                 </div>
