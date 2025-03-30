@@ -17,7 +17,7 @@ import AddPatientPage from "@/pages/add-patient-page";
 import AddDoctorPage from "@/pages/add-doctor-page";
 import AddPrescriptionPage from "@/pages/add-prescription-page";
 import AddSupplierPage from "@/pages/add-supplier-page";
-import AddTransactionPage from "@/pages/add-transaction-page-fixed";
+import AddTransactionPage from "@/pages/add-transaction-page-final";
 
 import { ProtectedRoute } from "./lib/protected-route";
 import { AuthProvider } from "./hooks/use-auth";

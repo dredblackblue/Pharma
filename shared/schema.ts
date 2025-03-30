@@ -122,8 +122,30 @@ export const insertPatientSchema = createInsertSchema(patients).omit({ id: true,
 export const insertDoctorSchema = createInsertSchema(doctors).omit({ id: true, created_at: true });
 export const insertPrescriptionSchema = createInsertSchema(prescriptions).omit({ id: true, created_at: true });
 export const insertPrescriptionItemSchema = createInsertSchema(prescriptionItems).omit({ id: true, created_at: true });
-export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, created_at: true });
-export const insertTransactionItemSchema = createInsertSchema(transactionItems).omit({ id: true, created_at: true });
+
+// Custom transaction schema with flexible date handling
+export const insertTransactionSchema = createInsertSchema(transactions)
+  .omit({ id: true, created_at: true })
+  .extend({
+    // Accept string or Date object for transactionDate
+    transactionDate: z.union([z.string(), z.date()]).transform(val => 
+      typeof val === 'string' ? new Date(val) : val
+    ),
+    // Accept string or number for totalAmount
+    totalAmount: z.union([z.string(), z.number()]).transform(val => 
+      typeof val === 'string' ? parseFloat(val) : val
+    )
+  });
+
+export const insertTransactionItemSchema = createInsertSchema(transactionItems)
+  .omit({ id: true, created_at: true })
+  .extend({
+    // Accept string or number for unitPrice
+    unitPrice: z.union([z.string(), z.number()]).transform(val => 
+      typeof val === 'string' ? parseFloat(val) : val
+    )
+  });
+
 export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: true, created_at: true });
 
 // Define types using z.infer
