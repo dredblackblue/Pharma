@@ -48,12 +48,14 @@ const AddMedicinePage = () => {
       name: "",
       description: "",
       stockQuantity: 0,
-      price: 0,
-      dosageInstructions: "",
-      manufacturer: "",
+      unitPrice: "0.00",
       category: "Generic",
+      manufacturer: "",
+      batchNumber: "",
       expiryDate: new Date(new Date().setFullYear(new Date().getFullYear() + 2)),
       manufactureDate: new Date(),
+      reorderLevel: 10,
+      supplierId: undefined,
     },
   });
 
@@ -157,12 +159,12 @@ const AddMedicinePage = () => {
                   
                   <FormField
                     control={form.control}
-                    name="dosageInstructions"
+                    name="batchNumber"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Dosage Instructions</FormLabel>
+                        <FormLabel>Batch Number</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Instructions for usage" {...field} />
+                          <Input placeholder="Enter batch/lot number" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -174,7 +176,7 @@ const AddMedicinePage = () => {
                 <div className="space-y-4 pt-4 border-t border-slate-200">
                   <h3 className="text-lg font-medium text-slate-800">Inventory Details</h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <FormField
                       control={form.control}
                       name="stockQuantity"
@@ -191,12 +193,26 @@ const AddMedicinePage = () => {
                     
                     <FormField
                       control={form.control}
-                      name="price"
+                      name="reorderLevel"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Price ($)</FormLabel>
+                          <FormLabel>Reorder Level</FormLabel>
                           <FormControl>
-                            <Input type="number" step="0.01" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
+                            <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value) || 0)} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="unitPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unit Price ($)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
