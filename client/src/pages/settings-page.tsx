@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -20,7 +20,8 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Shield, Mail, User, Key } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import QRCode from "qrcode";
+import Header from "@/components/layout/header";
+import Sidebar from "@/components/layout/sidebar";
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -49,9 +50,7 @@ const SettingsPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("profile");
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [verifyMfaCode, setVerifyMfaCode] = useState("");
-  const [showMfaVerification, setShowMfaVerification] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const queryClient = useQueryClient();
 
   const profileForm = useForm<ProfileFormValues>({
@@ -91,121 +90,6 @@ const SettingsPage = () => {
       });
     }
   }, [user, profileForm, emailMfaForm]);
-
-  // Query for checking MFA status
-  const { data: mfaStatus } = useQuery({
-    queryKey: ["/api/mfa/status"],
-    queryFn: getQueryFn(),
-    enabled: !!user,
-  });
-
-  // Generate MFA QR Code
-  const generateMfaMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("GET", "/api/mfa/generate");
-      return await res.json();
-    },
-    onSuccess: async (data) => {
-      try {
-        const url = await QRCode.toDataURL(data.otpauth_url);
-        setQrCodeUrl(url);
-        setShowMfaVerification(true);
-      } catch (error) {
-        toast({
-          title: "QR Code Generation Failed",
-          description: "Could not generate QR code for MFA setup.",
-          variant: "destructive",
-        });
-      }
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "MFA Setup Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Verify MFA Code
-  const verifyMfaMutation = useMutation({
-    mutationFn: async (code: string) => {
-      const res = await apiRequest("POST", "/api/mfa/verify", { token: code });
-      return await res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "MFA Enabled",
-        description: "Two-factor authentication has been enabled for your account.",
-      });
-      setShowMfaVerification(false);
-      setQrCodeUrl(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/mfa/status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Verification Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Toggle MFA
-  const toggleMfaMutation = useMutation({
-    mutationFn: async (enable: boolean) => {
-      const res = await apiRequest("POST", "/api/mfa/toggle", { enable });
-      return await res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: mfaStatus?.enabled ? "MFA Disabled" : "MFA Enabled",
-        description: mfaStatus?.enabled
-          ? "Two-factor authentication has been disabled."
-          : "Two-factor authentication has been enabled.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/mfa/status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "MFA Toggle Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Toggle Email MFA
-  const toggleEmailMfaMutation = useMutation({
-    mutationFn: async (data: EmailMfaFormValues) => {
-      const res = await apiRequest("POST", "/api/mfa/email/toggle", { 
-        enable: data.emailMfaEnabled 
-      });
-      return await res.json();
-    },
-    onSuccess: (_, variables) => {
-      toast({
-        title: variables.emailMfaEnabled ? "Email MFA Enabled" : "Email MFA Disabled",
-        description: variables.emailMfaEnabled
-          ? "Email verification will be required at login."
-          : "Email verification has been disabled.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Email MFA Toggle Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-      // Reset the form to previous state since the change failed
-      emailMfaForm.reset({
-        emailMfaEnabled: user?.emailMfaEnabled || false,
-      });
-    },
-  });
 
   // Update profile
   const updateProfileMutation = useMutation({
@@ -255,6 +139,36 @@ const SettingsPage = () => {
     },
   });
 
+  // Toggle Email MFA
+  const toggleEmailMfaMutation = useMutation({
+    mutationFn: async (data: EmailMfaFormValues) => {
+      const res = await apiRequest("POST", "/api/mfa/email/toggle", { 
+        enable: data.emailMfaEnabled 
+      });
+      return await res.json();
+    },
+    onSuccess: (_, variables) => {
+      toast({
+        title: variables.emailMfaEnabled ? "Email MFA Enabled" : "Email MFA Disabled",
+        description: variables.emailMfaEnabled
+          ? "Email verification will be required at login."
+          : "Email verification has been disabled.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Email MFA Toggle Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      // Reset the form to previous state since the change failed
+      emailMfaForm.reset({
+        emailMfaEnabled: user?.emailMfaEnabled || false,
+      });
+    },
+  });
+
   const onProfileSubmit = (data: ProfileFormValues) => {
     updateProfileMutation.mutate(data);
   };
@@ -267,320 +181,227 @@ const SettingsPage = () => {
     toggleEmailMfaMutation.mutate(data);
   };
 
-  const handleVerifyMfa = () => {
-    if (verifyMfaCode && verifyMfaCode.length === 6) {
-      verifyMfaMutation.mutate(verifyMfaCode);
-    } else {
-      toast({
-        title: "Invalid Code",
-        description: "Please enter a valid 6-digit verification code.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleGenerateMfa = () => {
-    generateMfaMutation.mutate();
-  };
-
-  const handleToggleMfa = () => {
-    if (mfaStatus?.enabled) {
-      toggleMfaMutation.mutate(false);
-    } else {
-      handleGenerateMfa();
-    }
-  };
-
   return (
-    <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <Header toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+        
+        <main className="flex-1 overflow-y-auto bg-slate-100 p-6">
+          <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
-          <TabsTrigger value="profile" className="flex items-center">
-            <User className="mr-2 h-4 w-4" />
-            <span>Profile</span>
-          </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center">
-            <Shield className="mr-2 h-4 w-4" />
-            <span>Security</span>
-          </TabsTrigger>
-          <TabsTrigger value="authentication" className="flex items-center">
-            <Key className="mr-2 h-4 w-4" />
-            <span>Authentication</span>
-          </TabsTrigger>
-        </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-8">
+              <TabsTrigger value="profile" className="flex items-center">
+                <User className="mr-2 h-4 w-4" />
+                <span>Profile</span>
+              </TabsTrigger>
+              <TabsTrigger value="security" className="flex items-center">
+                <Shield className="mr-2 h-4 w-4" />
+                <span>Security</span>
+              </TabsTrigger>
+              <TabsTrigger value="authentication" className="flex items-center">
+                <Key className="mr-2 h-4 w-4" />
+                <span>Authentication</span>
+              </TabsTrigger>
+            </TabsList>
 
-        {/* Profile Tab */}
-        <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Update your personal details</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...profileForm}>
-                <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
-                  <FormField
-                    control={profileForm.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={profileForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={profileForm.control}
-                    name="contactNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Contact Number</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={updateProfileMutation.isPending}
-                  >
-                    {updateProfileMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save Changes"
-                    )}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle>Change Password</CardTitle>
-              <CardDescription>Update your password to maintain account security</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...securityForm}>
-                <form onSubmit={securityForm.handleSubmit(onSecuritySubmit)} className="space-y-6">
-                  <FormField
-                    control={securityForm.control}
-                    name="currentPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Current Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={securityForm.control}
-                    name="newPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>New Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={securityForm.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm New Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={changePasswordMutation.isPending}
-                  >
-                    {changePasswordMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      "Change Password"
-                    )}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Authentication Tab */}
-        <TabsContent value="authentication">
-          <div className="grid gap-6">
-            {/* App-based MFA */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Two-Factor Authentication (App)</CardTitle>
-                <CardDescription>
-                  Add an extra layer of security to your account with a time-based one-time password
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium">Authenticator App</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Use an app like Google Authenticator or Authy to generate codes
-                    </p>
-                  </div>
-                  <Switch
-                    checked={mfaStatus?.enabled || false}
-                    onCheckedChange={handleToggleMfa}
-                    disabled={generateMfaMutation.isPending || verifyMfaMutation.isPending || toggleMfaMutation.isPending}
-                  />
-                </div>
-
-                {showMfaVerification && qrCodeUrl && (
-                  <div className="mt-6 space-y-4">
-                    <div className="flex flex-col items-center">
-                      <div className="mb-4">
-                        <img src={qrCodeUrl} alt="MFA QR Code" className="border p-2 rounded" />
-                      </div>
-                      <p className="text-sm text-center mb-4">
-                        Scan this QR code with your authenticator app, then enter the 6-digit code below
-                      </p>
-                      <div className="flex w-full max-w-sm items-center space-x-2">
-                        <Input
-                          type="text"
-                          placeholder="Enter 6-digit code"
-                          value={verifyMfaCode}
-                          onChange={(e) => setVerifyMfaCode(e.target.value)}
-                          maxLength={6}
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleVerifyMfa}
-                          disabled={verifyMfaMutation.isPending}
-                        >
-                          {verifyMfaMutation.isPending ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Verifying...
-                            </>
-                          ) : (
-                            "Verify"
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Email-based MFA */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Email Authentication</CardTitle>
-                <CardDescription>
-                  Receive a verification code via email when signing in
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Form {...emailMfaForm}>
-                  <form onSubmit={emailMfaForm.handleSubmit(onEmailMfaSubmit)} className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium">Email Verification</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Receive a one-time code via email when logging in
-                        </p>
-                      </div>
+            {/* Profile Tab */}
+            <TabsContent value="profile">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profile Information</CardTitle>
+                  <CardDescription>Update your personal details</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...profileForm}>
+                    <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                       <FormField
-                        control={emailMfaForm.control}
-                        name="emailMfaEnabled"
+                        control={profileForm.control}
+                        name="name"
                         render={({ field }) => (
                           <FormItem>
+                            <FormLabel>Full Name</FormLabel>
                             <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                disabled={toggleEmailMfaMutation.isPending}
-                              />
+                              <Input {...field} />
                             </FormControl>
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={toggleEmailMfaMutation.isPending}
-                      className="mt-4"
-                    >
-                      {toggleEmailMfaMutation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        "Save Changes"
-                      )}
-                    </Button>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+                      <FormField
+                        control={profileForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email</FormLabel>
+                            <FormControl>
+                              <Input type="email" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={profileForm.control}
+                        name="contactNumber"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Contact Number</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        disabled={updateProfileMutation.isPending}
+                      >
+                        {updateProfileMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Changes"
+                        )}
+                      </Button>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Security Tab */}
+            <TabsContent value="security">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Password</CardTitle>
+                  <CardDescription>Update your password to maintain account security</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...securityForm}>
+                    <form onSubmit={securityForm.handleSubmit(onSecuritySubmit)} className="space-y-6">
+                      <FormField
+                        control={securityForm.control}
+                        name="currentPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Current Password</FormLabel>
+                            <FormControl>
+                              <Input type="password" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={securityForm.control}
+                        name="newPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>New Password</FormLabel>
+                            <FormControl>
+                              <Input type="password" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={securityForm.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Confirm New Password</FormLabel>
+                            <FormControl>
+                              <Input type="password" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        disabled={changePasswordMutation.isPending}
+                      >
+                        {changePasswordMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          "Change Password"
+                        )}
+                      </Button>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Authentication Tab */}
+            <TabsContent value="authentication">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Email Two-Factor Authentication</CardTitle>
+                  <CardDescription>
+                    Enable email verification during login for added security
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...emailMfaForm}>
+                    <form onSubmit={emailMfaForm.handleSubmit(onEmailMfaSubmit)} className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-medium">Email Verification</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Receive a verification code by email when logging in
+                          </p>
+                        </div>
+                        <FormField
+                          control={emailMfaForm.control}
+                          name="emailMfaEnabled"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  disabled={toggleEmailMfaMutation.isPending}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      
+                      <Button
+                        type="submit"
+                        disabled={toggleEmailMfaMutation.isPending}
+                      >
+                        {toggleEmailMfaMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          "Save Authentication Settings"
+                        )}
+                      </Button>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </main>
+      </div>
     </div>
   );
 };
-
-function getQueryFn() {
-  return async () => {
-    const res = await fetch("/api/mfa/status");
-    if (!res.ok) {
-      if (res.status === 401) {
-        return null;
-      }
-      throw new Error("Failed to fetch MFA status");
-    }
-    return res.json();
-  };
-}
 
 export default SettingsPage;

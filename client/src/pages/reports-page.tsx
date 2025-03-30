@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/layout/header";
 import Sidebar from "@/components/layout/sidebar";
 import {
@@ -48,7 +49,7 @@ const ReportsPage = () => {
   const calculateInventoryValue = () => {
     if (!medicines) return 0;
     return medicines.reduce((total, medicine) => {
-      return total + (medicine.price * medicine.stockQuantity);
+      return total + (parseFloat(medicine.unitPrice) * medicine.stockQuantity);
     }, 0);
   };
 
@@ -71,7 +72,7 @@ const ReportsPage = () => {
   const calculateTotalSales = () => {
     if (!transactions) return 0;
     return transactions.reduce((total, transaction) => {
-      return total + transaction.totalAmount;
+      return total + parseFloat(transaction.totalAmount);
     }, 0);
   };
 
@@ -85,9 +86,100 @@ const ReportsPage = () => {
   };
 
   // Handle download report
+  const [downloadFormat, setDownloadFormat] = useState<"pdf" | "csv">("pdf");
+  
   const handleDownloadReport = () => {
-    // In a real application, this would generate and download a PDF or CSV report
-    alert("This would download a " + reportType + " report for the " + timeFrame + " timeframe.");
+    // Create report data
+    let reportData: string = "";
+    let fileName: string = "";
+    
+    // Create simple CSV data for the report
+    if (reportType === "inventory") {
+      fileName = `inventory-report-${timeFrame}.${downloadFormat}`;
+      
+      if (downloadFormat === "csv") {
+        // Create CSV data
+        reportData = "Name,Category,Stock,Unit Price,Total Value\n";
+        medicines?.forEach(med => {
+          reportData += `${med.name},${med.category},${med.stockQuantity},${med.unitPrice},${(parseFloat(med.unitPrice) * med.stockQuantity).toFixed(2)}\n`;
+        });
+      } else {
+        // For PDF we'll just simulate the download
+        createAndDownloadPdfReport("Inventory Report", "inventory");
+        return;
+      }
+    } else if (reportType === "sales") {
+      fileName = `sales-report-${timeFrame}.${downloadFormat}`;
+      
+      if (downloadFormat === "csv") {
+        // Create CSV data
+        reportData = "Date,Patient,Total Amount,Payment Method\n";
+        transactions?.forEach(tx => {
+          reportData += `${new Date(tx.transactionDate).toLocaleDateString()},${tx.patientId},${tx.totalAmount},${tx.paymentMethod || 'Cash'}\n`;
+        });
+      } else {
+        // For PDF we'll just simulate the download
+        createAndDownloadPdfReport("Sales Report", "sales");
+        return;
+      }
+    } else if (reportType === "prescriptions") {
+      fileName = `prescriptions-report-${timeFrame}.${downloadFormat}`;
+      
+      if (downloadFormat === "csv") {
+        // Create CSV data
+        reportData = "Date,Patient ID,Doctor ID,Status,Notes\n";
+        prescriptions?.forEach(px => {
+          reportData += `${new Date(px.created_at || '').toLocaleDateString()},${px.patientId},${px.doctorId},${px.status},${px.notes || ''}\n`;
+        });
+      } else {
+        // For PDF we'll just simulate the download
+        createAndDownloadPdfReport("Prescriptions Report", "prescriptions");
+        return;
+      }
+    }
+    
+    // Download CSV file
+    if (downloadFormat === "csv") {
+      const blob = new Blob([reportData], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+  
+  // Simulates PDF report creation and download
+  const createAndDownloadPdfReport = (title: string, type: string) => {
+    // In a real application, you would use a library like jsPDF to generate a PDF
+    // For this demo, we'll simulate the PDF download with a delay
+    toast({
+      title: "Generating PDF Report",
+      description: "Your report is being generated...",
+    });
+    
+    setTimeout(() => {
+      const fileName = `${type}-report-${timeFrame}.pdf`;
+      const link = document.createElement('a');
+      
+      // Create a simple text file that simulates a PDF
+      const content = `This is a simulated ${title} for ${timeFrame} timeframe.\n`;
+      const blob = new Blob([content], { type: 'application/pdf' });
+      
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Report Downloaded",
+        description: `Your ${title} has been downloaded as a PDF.`,
+      });
+    }, 1500);
   };
 
   const isLoading = medicinesLoading || transactionsLoading || prescriptionsLoading;
@@ -108,7 +200,7 @@ const ReportsPage = () => {
             
             <div className="flex mt-4 md:mt-0 space-x-2">
               <Select value={timeFrame} onValueChange={setTimeFrame}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Select time frame" />
                 </SelectTrigger>
                 <SelectContent>
@@ -116,6 +208,16 @@ const ReportsPage = () => {
                   <SelectItem value="month">Last Month</SelectItem>
                   <SelectItem value="quarter">Last Quarter</SelectItem>
                   <SelectItem value="year">Last Year</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={downloadFormat} onValueChange={setDownloadFormat as any}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue placeholder="Format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">PDF</SelectItem>
+                  <SelectItem value="csv">CSV</SelectItem>
                 </SelectContent>
               </Select>
               

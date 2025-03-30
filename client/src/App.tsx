@@ -12,6 +12,7 @@ import SuppliersPage from "@/pages/suppliers-page";
 import ReportsPage from "@/pages/reports-page";
 import TransactionsPage from "@/pages/transactions-page";
 import OrdersPage from "@/pages/orders-page";
+import SettingsPage from "@/pages/settings-page";
 
 // Add Pages
 import AddMedicinePage from "@/pages/add-medicine-page";
@@ -53,6 +54,7 @@ function Router() {
       <ProtectedRoute path="/transactions/new" component={AddTransactionPage} />
       <ProtectedRoute path="/add-order" component={AddOrderPage} />
       <ProtectedRoute path="/orders/:id" component={OrderDetailsPage} />
+      <ProtectedRoute path="/settings" component={SettingsPage} />
       
       <Route component={NotFound} />
     </Switch>

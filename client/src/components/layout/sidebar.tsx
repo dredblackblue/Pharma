@@ -44,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { path: "/transactions", label: "Transactions", icon: <Receipt className="w-5 h-5 mr-3" /> },
     { path: "/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5 mr-3" /> },
     { path: "/reports", label: "Reports", icon: <BarChart className="w-5 h-5 mr-3" /> },
+    { path: "/orders", label: "Orders", icon: <Truck className="w-5 h-5 mr-3" /> },
   ];
 
   return (
