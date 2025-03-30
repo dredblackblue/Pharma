@@ -86,16 +86,16 @@ const AddTransactionPage = () => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       patientId: 0,
-      transactionDate: new Date().toISOString(),
-      totalAmount: 0,
+      transactionDate: new Date(),
+      totalAmount: "0",
       paymentMethod: "Cash",
       status: "Completed",
       notes: "",
       items: [
         {
-          medicineId: 0,
-          quantity: 1,
-          unitPrice: 0,
+          medicineId: 0 as number,
+          quantity: 1 as number,
+          unitPrice: 0 as number,
         },
       ],
     },
@@ -115,7 +115,7 @@ const AddTransactionPage = () => {
         return sum + (item.quantity * item.unitPrice);
       }, 0);
       setTotalAmount(total);
-      form.setValue("totalAmount", total);
+      form.setValue("totalAmount", total.toString());
     };
 
     calculateTotal();
@@ -135,7 +135,7 @@ const AddTransactionPage = () => {
     if (medicines) {
       const medicine = medicines.find(m => m.id === medicineId);
       if (medicine) {
-        form.setValue(`items.${index}.unitPrice`, medicine.unitPrice);
+        form.setValue(`items.${index}.unitPrice`, parseFloat(medicine.unitPrice.toString()));
       }
     }
   };
@@ -166,11 +166,12 @@ const AddTransactionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Convert string IDs to numbers and totalAmount to string
+    // Convert string IDs to numbers, and handle data appropriately
     const formattedData = {
       ...data,
       patientId: Number(data.patientId),
       totalAmount: data.totalAmount.toString(), // API expects string for totalAmount
+      transactionDate: data.transactionDate, // Pass the Date object directly
       items: data.items.map(item => ({
         ...item,
         medicineId: Number(item.medicineId),
@@ -185,12 +186,12 @@ const AddTransactionPage = () => {
     if (patients?.length && medicines?.length) {
       form.reset({
         ...form.getValues(),
-        patientId: patients[0]?.id || 0,
+        patientId: Number(patients[0]?.id || 0),
         items: [
           {
-            medicineId: medicines[0]?.id || 0,
+            medicineId: Number(medicines[0]?.id || 0),
             quantity: 1,
-            unitPrice: medicines[0]?.unitPrice || 0,
+            unitPrice: parseFloat(medicines[0]?.unitPrice?.toString() || "0"),
           },
         ],
       });
@@ -225,8 +226,8 @@ const AddTransactionPage = () => {
                         <FormItem>
                           <FormLabel>Patient</FormLabel>
                           <Select 
-                            onValueChange={field.onChange} 
-                            defaultValue={field.value.toString()}
+                            onValueChange={(value) => field.onChange(parseInt(value))} 
+                            defaultValue={field.value?.toString() || ''}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -256,10 +257,12 @@ const AddTransactionPage = () => {
                             <Input 
                               type="date" 
                               {...field} 
-                              value={field.value ? field.value.split('T')[0] : ''} 
+                              value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
                               onChange={(e) => {
-                                const date = new Date(e.target.value);
-                                field.onChange(date.toISOString());
+                                if (e.target.value) {
+                                  const date = new Date(e.target.value);
+                                  field.onChange(date);
+                                }
                               }}
                             />
                           </FormControl>
@@ -276,7 +279,7 @@ const AddTransactionPage = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Payment Method</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select payment method" />
@@ -301,7 +304,7 @@ const AddTransactionPage = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Status</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -367,12 +370,12 @@ const AddTransactionPage = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const medicineId = medicines && medicines.length > 0 ? medicines[0].id : 0;
-                        const unitPrice = medicines && medicines.length > 0 ? medicines[0].unitPrice : 0;
+                        const medicineId = medicines && medicines.length > 0 ? Number(medicines[0].id) : 0;
+                        const unitPrice = medicines && medicines.length > 0 ? parseFloat(medicines[0].unitPrice?.toString() || "0") : 0;
                         append({
-                          medicineId,
+                          medicineId: medicineId as number,
                           quantity: 1,
-                          unitPrice,
+                          unitPrice: unitPrice as number,
                         });
                       }}
                     >
@@ -396,7 +399,7 @@ const AddTransactionPage = () => {
                                     field.onChange(parseInt(value));
                                     updateMedicinePrice(index, parseInt(value));
                                   }}
-                                  defaultValue={field.value.toString()}
+                                  defaultValue={field.value?.toString() || ''}
                                 >
                                   <FormControl>
                                     <SelectTrigger>

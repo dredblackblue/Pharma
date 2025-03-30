@@ -135,11 +135,14 @@ const AddPrescriptionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Convert string IDs to numbers
+    // Convert string IDs to numbers and ensure dates are in the correct format
     const formattedData = {
       ...data,
       patientId: Number(data.patientId),
       doctorId: Number(data.doctorId),
+      // Convert dates to strings in proper date format for the API
+      issueDate: new Date().toISOString(), // Default to today's date
+      expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(), // Default to one month from now
       items: data.items.map(item => ({
         ...item,
         medicineId: Number(item.medicineId),
@@ -196,8 +199,8 @@ const AddPrescriptionPage = () => {
                         <FormItem>
                           <FormLabel>Patient</FormLabel>
                           <Select 
-                            onValueChange={field.onChange} 
-                            defaultValue={field.value.toString()}
+                            onValueChange={(value) => field.onChange(parseInt(value))} 
+                            defaultValue={field.value?.toString() || ''}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -224,8 +227,8 @@ const AddPrescriptionPage = () => {
                         <FormItem>
                           <FormLabel>Doctor</FormLabel>
                           <Select 
-                            onValueChange={field.onChange} 
-                            defaultValue={field.value.toString()}
+                            onValueChange={(value) => field.onChange(parseInt(value))} 
+                            defaultValue={field.value?.toString() || ''}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -256,11 +259,13 @@ const AddPrescriptionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              {...field} 
-                              value={field.value ? field.value.split('T')[0] : ''} 
+                              {...field}
+                              value={new Date().toISOString().split('T')[0]}
                               onChange={(e) => {
-                                const date = new Date(e.target.value);
-                                field.onChange(date.toISOString());
+                                if (e.target.value) {
+                                  const date = new Date(e.target.value);
+                                  field.onChange(date.toISOString());
+                                }
                               }}
                             />
                           </FormControl>
@@ -278,11 +283,13 @@ const AddPrescriptionPage = () => {
                           <FormControl>
                             <Input 
                               type="date" 
-                              {...field} 
-                              value={field.value ? field.value.split('T')[0] : ''} 
+                              {...field}
+                              value={new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]}
                               onChange={(e) => {
-                                const date = new Date(e.target.value);
-                                field.onChange(date.toISOString());
+                                if (e.target.value) {
+                                  const date = new Date(e.target.value);
+                                  field.onChange(date.toISOString());
+                                }
                               }}
                             />
                           </FormControl>
@@ -297,7 +304,7 @@ const AddPrescriptionPage = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Status</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value || ''}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -362,8 +369,8 @@ const AddPrescriptionPage = () => {
                               <FormItem>
                                 <FormLabel>Medicine</FormLabel>
                                 <Select 
-                                  onValueChange={field.onChange} 
-                                  defaultValue={field.value.toString()}
+                                  onValueChange={(value) => field.onChange(parseInt(value))} 
+                                  defaultValue={field.value?.toString() || ''}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
