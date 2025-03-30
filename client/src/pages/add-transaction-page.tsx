@@ -86,7 +86,7 @@ const AddTransactionPage = () => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       patientId: 0,
-      prescriptionId: undefined,
+      prescriptionId: undefined, // This will map to "none" in the select field
       transactionDate: new Date().toISOString(),
       totalAmount: 0,
       paymentMethod: "Cash",
@@ -272,8 +272,11 @@ const AddTransactionPage = () => {
                         <FormItem>
                           <FormLabel>Prescription (Optional)</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(value ? Number(value) : undefined)} 
-                            value={field.value?.toString() || ""}
+                            onValueChange={(value) => {
+                              // Use "none" as a special value to indicate no prescription
+                              field.onChange(value === "none" ? undefined : Number(value));
+                            }} 
+                            value={field.value?.toString() || "none"}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -281,7 +284,7 @@ const AddTransactionPage = () => {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
                               {prescriptions?.map((prescription) => (
                                 <SelectItem key={prescription.id} value={prescription.id.toString()}>
                                   Prescription #{prescription.id} ({new Date(prescription.issueDate).toLocaleDateString()})
