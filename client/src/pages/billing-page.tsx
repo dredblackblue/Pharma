@@ -73,7 +73,7 @@ const BillingPage = () => {
             <h1 className="text-2xl font-semibold text-slate-800">Billing & Transactions</h1>
             <Button onClick={() => setLocation("/transactions/new")}>
               <Plus className="mr-2 h-4 w-4" />
-              New Invoice
+              New Transaction
             </Button>
           </div>
           
@@ -256,7 +256,7 @@ const BillingPage = () => {
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem>
                               <Receipt className="h-4 w-4 mr-2" />
-                              View invoice
+                              View transaction
                             </DropdownMenuItem>
                             <DropdownMenuItem>Print receipt</DropdownMenuItem>
                             <DropdownMenuItem>View patient</DropdownMenuItem>

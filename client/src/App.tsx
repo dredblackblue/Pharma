@@ -44,6 +44,7 @@ function Router() {
       <ProtectedRoute path="/prescriptions/new" component={AddPrescriptionPage} />
       <ProtectedRoute path="/suppliers/new" component={AddSupplierPage} />
       <ProtectedRoute path="/billing/new" component={AddTransactionPage} />
+      <ProtectedRoute path="/transactions/new" component={AddTransactionPage} />
       
       <Route component={NotFound} />
     </Switch>

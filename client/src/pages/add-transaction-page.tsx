@@ -32,15 +32,35 @@ import { apiRequest } from "@/lib/queryClient";
 
 // Define the schema for transaction items
 const transactionItemSchema = z.object({
-  medicineId: z.number({
-    required_error: "Medicine is required",
-  }),
-  quantity: z.number().min(1, "Quantity must be at least 1"),
-  unitPrice: z.number().min(0, "Price cannot be negative"),
+  medicineId: z.union([
+    z.string().min(1, "Medicine is required"),
+    z.number({
+      required_error: "Medicine is required",
+    })
+  ]),
+  quantity: z.union([
+    z.string().min(1, "Quantity is required").transform(val => parseInt(val)),
+    z.number().min(1, "Quantity must be at least 1")
+  ]),
+  unitPrice: z.union([
+    z.string().min(1, "Price is required").transform(val => parseFloat(val)),
+    z.number().min(0, "Price cannot be negative")
+  ]),
 });
 
 // Extend the schema for form validation
 const formSchema = insertTransactionSchema.extend({
+  patientId: z.union([
+    z.string().min(1, "Patient is required"),
+    z.number({
+      required_error: "Patient is required",
+    })
+  ]),
+  prescriptionId: z.union([
+    z.string().transform(val => val ? parseInt(val) : undefined),
+    z.number().optional(),
+    z.undefined()
+  ]),
   items: z.array(transactionItemSchema),
 });
 
@@ -115,7 +135,7 @@ const AddTransactionPage = () => {
     if (medicines) {
       const medicine = medicines.find(m => m.id === medicineId);
       if (medicine) {
-        form.setValue(`items.${index}.unitPrice`, medicine.price);
+        form.setValue(`items.${index}.unitPrice`, medicine.unitPrice);
       }
     }
   };
@@ -146,11 +166,11 @@ const AddTransactionPage = () => {
   });
 
   const onSubmit = (data: FormValues) => {
-    // Convert string IDs to numbers
+    // Convert string IDs to numbers and totalAmount to string
     const formattedData = {
       ...data,
       patientId: Number(data.patientId),
-      totalAmount: Number(data.totalAmount),
+      totalAmount: data.totalAmount.toString(), // API expects string for totalAmount
       items: data.items.map(item => ({
         ...item,
         medicineId: Number(item.medicineId),
@@ -170,7 +190,7 @@ const AddTransactionPage = () => {
           {
             medicineId: medicines[0]?.id || 0,
             quantity: 1,
-            unitPrice: medicines[0]?.price || 0,
+            unitPrice: medicines[0]?.unitPrice || 0,
           },
         ],
       });
@@ -330,7 +350,7 @@ const AddTransactionPage = () => {
                       <FormItem>
                         <FormLabel>Notes</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Additional notes about this transaction" {...field} />
+                          <Textarea placeholder="Additional notes about this transaction" {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -348,7 +368,7 @@ const AddTransactionPage = () => {
                       size="sm"
                       onClick={() => {
                         const medicineId = medicines && medicines.length > 0 ? medicines[0].id : 0;
-                        const unitPrice = medicines && medicines.length > 0 ? medicines[0].price : 0;
+                        const unitPrice = medicines && medicines.length > 0 ? medicines[0].unitPrice : 0;
                         append({
                           medicineId,
                           quantity: 1,

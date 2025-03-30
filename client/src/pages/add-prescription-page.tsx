@@ -33,16 +33,34 @@ import { apiRequest } from "@/lib/queryClient";
 
 // Define the schema for prescription items
 const prescriptionItemSchema = z.object({
-  medicineId: z.number({
-    required_error: "Medicine is required",
-  }),
-  quantity: z.number().min(1, "Quantity must be at least 1"),
+  medicineId: z.union([
+    z.string().min(1, "Medicine is required"),
+    z.number({
+      required_error: "Medicine is required",
+    })
+  ]),
+  quantity: z.union([
+    z.string().min(1, "Quantity is required").transform(val => parseInt(val)),
+    z.number().min(1, "Quantity must be at least 1")
+  ]),
   dosage: z.string().min(1, "Dosage information is required"),
   instructions: z.string().optional(),
 });
 
 // Extend the schema for form validation
 const formSchema = insertPrescriptionSchema.extend({
+  patientId: z.union([
+    z.string().min(1, "Patient is required"),
+    z.number({
+      required_error: "Patient is required",
+    })
+  ]),
+  doctorId: z.union([
+    z.string().min(1, "Doctor is required"),
+    z.number({
+      required_error: "Doctor is required",
+    })
+  ]),
   items: z.array(prescriptionItemSchema),
 });
 
@@ -305,7 +323,7 @@ const AddPrescriptionPage = () => {
                       <FormItem>
                         <FormLabel>Additional Notes</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="Any special instructions or notes" {...field} />
+                          <Textarea placeholder="Any special instructions or notes" {...field} value={field.value || ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -419,7 +437,7 @@ const AddPrescriptionPage = () => {
                             <FormItem className="mt-4">
                               <FormLabel>Instructions</FormLabel>
                               <FormControl>
-                                <Textarea placeholder="Special instructions for this medication" {...field} />
+                                <Textarea placeholder="Special instructions for this medication" {...field} value={field.value || ''} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
