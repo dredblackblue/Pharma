@@ -10,6 +10,7 @@ import PrescriptionsPage from "@/pages/prescriptions-page";
 import BillingPage from "@/pages/billing-page";
 import SuppliersPage from "@/pages/suppliers-page";
 import ReportsPage from "@/pages/reports-page";
+import TransactionsPage from "@/pages/transactions-page";
 
 // Add Pages
 import AddMedicinePage from "@/pages/add-medicine-page";
@@ -34,6 +35,7 @@ function Router() {
       <ProtectedRoute path="/doctors" component={DoctorsPage} />
       <ProtectedRoute path="/prescriptions" component={PrescriptionsPage} />
       <ProtectedRoute path="/billing" component={BillingPage} />
+      <ProtectedRoute path="/transactions" component={TransactionsPage} />
       <ProtectedRoute path="/suppliers" component={SuppliersPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
       

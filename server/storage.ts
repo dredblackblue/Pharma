@@ -9,6 +9,7 @@ import { transactionItems, type TransactionItem, type InsertTransactionItem } fr
 import { suppliers, type Supplier, type InsertSupplier } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { Store } from "express-session";
 
 const MemoryStore = createMemoryStore(session);
 
@@ -17,6 +18,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   
   // Medicine methods
@@ -66,7 +68,7 @@ export interface IStorage {
   deleteSupplier(id: number): Promise<boolean>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: Store;
 }
 
 export class MemStorage implements IStorage {
@@ -90,7 +92,7 @@ export class MemStorage implements IStorage {
   private currentTransactionItemId: number;
   private currentSupplierId: number;
   
-  public sessionStore: session.SessionStore;
+  public sessionStore: Store;
 
   constructor() {
     this.users = new Map();
@@ -139,6 +141,15 @@ export class MemStorage implements IStorage {
     return user;
   }
   
+  async updateUser(id: number, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    const updatedUser = { ...user, ...userUpdate };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
   }

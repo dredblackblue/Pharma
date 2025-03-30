@@ -2,15 +2,17 @@ import { pgTable, text, serial, integer, boolean, date, timestamp, decimal } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// User model
+// User model with role-based access control and MFA
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
-  role: text("role").notNull().default("pharmacist"),
+  role: text("role").notNull().default("pharmacist"), // admin, pharmacist, doctor, patient
   contactNumber: text("contact_number"),
+  mfaEnabled: boolean("mfa_enabled").default(false),
+  mfaSecret: text("mfa_secret"),
   created_at: timestamp("created_at").defaultNow()
 });
 
