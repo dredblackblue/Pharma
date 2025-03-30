@@ -28,14 +28,14 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
+  insertTransactionSchema,
   Patient, 
   Medicine, 
-  Prescription,
-  insertTransactionSchema,
+  Prescription 
 } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-// Define the schema for transaction items
+// Define a schema for transaction items
 const transactionItemSchema = z.object({
   medicineId: z.number({
     required_error: "Medicine is required",
@@ -48,13 +48,13 @@ const transactionItemSchema = z.object({
   }).min(0, "Price cannot be negative"),
 });
 
-// Extend the schema for form validation
+// Extend the transaction schema for the form
 const formSchema = z.object({
   patientId: z.number({
     required_error: "Patient is required",
   }),
   prescriptionId: z.number().optional(),
-  transactionDate: z.string().or(z.date()),
+  transactionDate: z.string(),
   totalAmount: z.number().min(0, "Total amount cannot be negative"),
   paymentMethod: z.string().default("Cash"),
   status: z.string().default("Completed"),
@@ -69,24 +69,27 @@ const AddTransactionPage = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Fetch data for dropdowns
+  // Fetch patients
   const { data: patients } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
   });
 
-  const { data: prescriptions } = useQuery<Prescription[]>({
-    queryKey: ["/api/prescriptions"],
-  });
-
+  // Fetch medicines
   const { data: medicines } = useQuery<Medicine[]>({
     queryKey: ["/api/medicines"],
   });
 
+  // Fetch prescriptions
+  const { data: prescriptions } = useQuery<Prescription[]>({
+    queryKey: ["/api/prescriptions"],
+  });
+
+  // Set up form with default values
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       patientId: 0,
-      prescriptionId: undefined, // This will map to "none" in the select field
+      prescriptionId: undefined,
       transactionDate: new Date().toISOString(),
       totalAmount: 0,
       paymentMethod: "Cash",
@@ -102,25 +105,23 @@ const AddTransactionPage = () => {
     },
   });
 
-  // Set up field array for transaction items
+  // Set up field array for items
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "items",
   });
 
-  // Calculate total amount when items change
+  // Calculate total amount whenever items change
   const calculateTotal = () => {
     const items = form.getValues().items || [];
     const total = items.reduce((sum, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const price = Number(item.unitPrice) || 0;
-      return sum + (quantity * price);
+      return sum + (Number(item.quantity) * Number(item.unitPrice));
     }, 0);
     form.setValue("totalAmount", total);
     return total;
   };
 
-  // Update price when medicine is selected
+  // Update price when medicine selection changes
   const updatePrice = (index: number, medicineId: number) => {
     const medicine = medicines?.find(m => m.id === medicineId);
     if (medicine) {
@@ -128,54 +129,6 @@ const AddTransactionPage = () => {
       calculateTotal();
     }
   };
-
-  const mutation = useMutation({
-    mutationFn: async (data: FormValues) => {
-      // Format the transaction data
-      const transaction = {
-        patientId: data.patientId,
-        prescriptionId: data.prescriptionId,
-        transactionDate: typeof data.transactionDate === 'string' 
-          ? data.transactionDate 
-          : data.transactionDate.toISOString(),
-        totalAmount: data.totalAmount,
-        paymentMethod: data.paymentMethod,
-        status: data.status,
-        notes: data.notes || ""
-      };
-      
-      // Create the transaction first
-      const res = await apiRequest("POST", "/api/transactions", transaction);
-      const transactionResult = await res.json();
-      
-      // Then add each transaction item with the new transaction ID
-      for (const item of data.items) {
-        await apiRequest("POST", "/api/transaction-items", {
-          transactionId: transactionResult.id,
-          medicineId: item.medicineId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-        });
-      }
-      
-      return transactionResult;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      toast({
-        title: "Transaction Created",
-        description: "The transaction has been created successfully",
-      });
-      setLocation("/transactions");
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to create transaction",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
   // Reset form when data is loaded
   useEffect(() => {
@@ -195,11 +148,49 @@ const AddTransactionPage = () => {
     }
   }, [patients, medicines, form]);
 
+  // Create transaction mutation
+  const mutation = useMutation({
+    mutationFn: async (data: FormValues) => {
+      // Send all data to server in a single request - the server will extract items
+      const transactionData = {
+        patientId: data.patientId,
+        prescriptionId: data.prescriptionId,
+        transactionDate: data.transactionDate,
+        totalAmount: data.totalAmount,
+        paymentMethod: data.paymentMethod,
+        status: data.status,
+        notes: data.notes || "",
+        items: data.items.map(item => ({
+          medicineId: item.medicineId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice
+        })),
+      };
+      
+      const res = await apiRequest("POST", "/api/transactions", transactionData);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({
+        title: "Transaction Created",
+        description: "The transaction has been created successfully",
+      });
+      setLocation("/transactions");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error Creating Transaction",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: FormValues) => {
-    // Recalculate total just to be sure
+    // Make sure all numbers are actually numbers
     const finalTotal = calculateTotal();
     
-    // Convert string values to numbers
     const formattedData = {
       ...data,
       patientId: Number(data.patientId),
@@ -237,6 +228,7 @@ const AddTransactionPage = () => {
                   <h3 className="text-lg font-medium text-slate-800">Transaction Details</h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Patient selection */}
                     <FormField
                       control={form.control}
                       name="patientId"
@@ -245,7 +237,7 @@ const AddTransactionPage = () => {
                           <FormLabel>Patient</FormLabel>
                           <Select 
                             onValueChange={(value) => field.onChange(Number(value))} 
-                            value={field.value?.toString()}
+                            value={field.value?.toString() || "0"}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -265,6 +257,7 @@ const AddTransactionPage = () => {
                       )}
                     />
                     
+                    {/* Prescription selection (optional) */}
                     <FormField
                       control={form.control}
                       name="prescriptionId"
@@ -273,8 +266,11 @@ const AddTransactionPage = () => {
                           <FormLabel>Prescription (Optional)</FormLabel>
                           <Select 
                             onValueChange={(value) => {
-                              // Use "none" as a special value to indicate no prescription
-                              field.onChange(value === "none" ? undefined : Number(value));
+                              if (value === "none") {
+                                field.onChange(undefined);
+                              } else {
+                                field.onChange(Number(value));
+                              }
                             }} 
                             value={field.value?.toString() || "none"}
                           >
@@ -299,6 +295,7 @@ const AddTransactionPage = () => {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Transaction date */}
                     <FormField
                       control={form.control}
                       name="transactionDate"
@@ -325,13 +322,14 @@ const AddTransactionPage = () => {
                       )}
                     />
                     
+                    {/* Payment method */}
                     <FormField
                       control={form.control}
                       name="paymentMethod"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Payment Method</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value || "Cash"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select payment method" />
@@ -350,13 +348,14 @@ const AddTransactionPage = () => {
                       )}
                     />
                     
+                    {/* Status */}
                     <FormField
                       control={form.control}
                       name="status"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Status</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value || "Completed"}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -375,6 +374,7 @@ const AddTransactionPage = () => {
                     />
                   </div>
                   
+                  {/* Notes */}
                   <FormField
                     control={form.control}
                     name="notes"
@@ -399,11 +399,15 @@ const AddTransactionPage = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => {
+                        const firstMedicineId = medicines && medicines.length > 0 ? Number(medicines[0].id) : 0;
+                        const firstMedicinePrice = medicines && medicines.length > 0 ? Number(medicines[0].unitPrice) : 0;
+                        
                         append({
-                          medicineId: medicines && medicines.length > 0 ? Number(medicines[0].id) : 0,
+                          medicineId: firstMedicineId,
                           quantity: 1,
-                          unitPrice: medicines && medicines.length > 0 ? Number(medicines[0].unitPrice) : 0,
+                          unitPrice: firstMedicinePrice,
                         });
+                        
                         setTimeout(() => calculateTotal(), 0);
                       }}
                     >
@@ -416,6 +420,7 @@ const AddTransactionPage = () => {
                     <Card key={field.id} className="border-slate-200">
                       <CardContent className="pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          {/* Medicine selection */}
                           <FormField
                             control={form.control}
                             name={`items.${index}.medicineId`}
@@ -424,11 +429,11 @@ const AddTransactionPage = () => {
                                 <FormLabel>Medicine</FormLabel>
                                 <Select 
                                   onValueChange={(value) => {
-                                    const numValue = Number(value);
-                                    field.onChange(numValue);
-                                    updatePrice(index, numValue);
+                                    const medicineId = Number(value);
+                                    field.onChange(medicineId);
+                                    updatePrice(index, medicineId);
                                   }} 
-                                  value={field.value?.toString()}
+                                  value={field.value?.toString() || "0"}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -448,6 +453,7 @@ const AddTransactionPage = () => {
                             )}
                           />
                           
+                          {/* Quantity */}
                           <FormField
                             control={form.control}
                             name={`items.${index}.quantity`}
@@ -470,6 +476,7 @@ const AddTransactionPage = () => {
                             )}
                           />
                           
+                          {/* Unit Price */}
                           <FormField
                             control={form.control}
                             name={`items.${index}.unitPrice`}
@@ -493,6 +500,7 @@ const AddTransactionPage = () => {
                             )}
                           />
                           
+                          {/* Delete button */}
                           <div className="flex items-end">
                             <Button
                               type="button"
@@ -515,6 +523,7 @@ const AddTransactionPage = () => {
                     </Card>
                   ))}
                   
+                  {/* Total amount display */}
                   <div className="flex justify-end pt-4">
                     <div className="bg-slate-50 border border-slate-200 rounded-md px-4 py-3 flex items-center space-x-4">
                       <Calculator className="h-5 w-5 text-slate-400" />
@@ -536,6 +545,7 @@ const AddTransactionPage = () => {
                   </div>
                 </div>
                 
+                {/* Form actions */}
                 <div className="pt-6 space-x-2 flex justify-end border-t border-slate-200">
                   <Button 
                     type="button" 
